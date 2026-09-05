@@ -1,122 +1,110 @@
 'use strict';
 (() => {
   const api = window.am;
-  if (!api) { document.body.innerHTML = '<h1 style="color:#fff;padding:40px">Preload unavailable</h1>'; return; }
-
+  if (!api) {
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#000;color:#fff;font-family:sans-serif;font-size:16px">Preload unavailable</div>';
+    return;
+  }
   const $ = id => document.getElementById(id);
 
-  /* ── i18n ──────────────────────────────────────────────────── */
+  /* ── i18n ─────────────────────────────────────────────────── */
   const i18n = {
-    strings: {}, fallback: {},
+    s: {}, f: {},
     async init() {
       try {
-        const s = await api.invoke('settings:get');
-        await this.loadFor(s.language || 'en');
-        if (s.language !== 'en') try { this.fallback = await (await fetch('i18n/locales/en.json')).json(); } catch {}
+        const cfg = await api.invoke('settings:get');
+        const lang = cfg.language || 'en';
+        await this.load(lang);
+        if (lang !== 'en' && !Object.keys(this.f).length) try { this.f = await (await fetch('../shared/i18n/locales/en.json')).json(); } catch {}
       } catch {}
     },
-    async loadFor(l) {
-      try { this.strings = await (await fetch('i18n/locales/' + l + '.json')).json(); } catch { this.strings = this.fallback; }
-      if (l !== 'en' && !Object.keys(this.fallback).length) try { this.fallback = await (await fetch('i18n/locales/en.json')).json(); } catch {}
+    async load(lang) {
+      try { this.s = await (await fetch('../shared/i18n/locales/' + lang + '.json')).json(); } catch { this.s = {}; }
+      if (!Object.keys(this.f).length) try { this.f = await (await fetch('../shared/i18n/locales/en.json')).json(); } catch {}
     },
-    t(k, v) {
-      let s = this.strings[k] || this.fallback[k] || k;
-      if (v) Object.entries(v).forEach(([a,b]) => { s = s.split('{{'+a+'}}').join(String(b)); });
-      return s;
-    },
+    t(k) { return this.s[k] || this.f[k] || k; },
   };
   function applyI18n() {
     document.querySelectorAll('[data-i18n]').forEach(e => { const k = e.getAttribute('data-i18n'); if (k) e.textContent = i18n.t(k); });
     document.querySelectorAll('[data-i18n-placeholder]').forEach(e => { const k = e.getAttribute('data-i18n-placeholder'); if (k) e.placeholder = i18n.t(k); });
   }
 
-  /* ── State ─────────────────────────────────────────────────── */
+  /* ── State ────────────────────────────────────────────────── */
   let allTabs = [], activeId = '', activeUrl = '', activeTitle = '';
   let currentPanel = '';
 
-  /* ── DOM refs ──────────────────────────────────────────────── */
-  const tabStrip = $('tabStrip');
-  const tabCount = $('tabCount');
+  /* ── DOM refs ─────────────────────────────────────────────── */
+  const tabStrip = $('tabStrip'), tabCount = $('tabCount');
   const urlBar = $('urlBar'), urlBarText = $('urlBarText');
   const urlEditBar = $('urlEditBar'), urlInput = $('urlInput');
-  const homeEl = $('home');
-  const homeInput = $('home-input');
+  const homeEl = $('home'), homeInput = $('home-input');
   const menuBackdrop = $('menu-backdrop'), sideMenu = $('side-menu'), sideMenuGrid = $('side-menu-grid');
-  const panelBackdrop = $('panel-backdrop'), panel = $('panel'), panelTitle = $('panel-title'), panelBody = $('panel-body'), panelAction = $('panel-action'), panelSearch = $('panel-search');
+  const panelBackdrop = $('panel-backdrop'), panel = $('panel');
+  const panelTitle = $('panel-title'), panelBody = $('panel-body');
+  const panelAction = $('panel-action'), panelSearch = $('panel-search');
 
-  /* ── Helpers ───────────────────────────────────────────────── */
+  /* ── Helpers ──────────────────────────────────────────────── */
   function favicon(url) { try { return new URL(url).hostname[0]?.toUpperCase() || '?'; } catch { return '?'; } }
   function fmtBytes(b) { if (!b || isNaN(b)) return '0 B'; const u = ['B','KB','MB','GB']; let i = 0, n = b; while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + ' ' + u[i]; }
-  function showToast(msg) {
+  function toast(msg) {
     let t = $('toast');
     if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
     t.textContent = msg; t.classList.add('show');
-    clearTimeout(t._timer);
-    t._timer = setTimeout(() => t.classList.remove('show'), 1800);
+    clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
-  /* ── Navigation ────────────────────────────────────────────── */
+  /* ── Navigation (ALL invoke, NEVER send) ──────────────────── */
   async function navigate(url) {
-    const id = await api.invoke('tabs:getActiveId');
-    if (!id) return;
-    await api.invoke('tabs:navigate', id, url);
+    try {
+      const id = await api.invoke('tabs:getActiveId');
+      if (!id) return;
+      await api.invoke('tabs:navigate', id, url);
+    } catch (e) { console.error('navigate error', e); }
   }
   function normalize(v) {
-    const s = v.trim(); if (!s) return '';
+    const s = v.trim();
+    if (!s) return '';
     if (/^am:\/\//i.test(s)) return s;
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^about:/i.test(s) || /^data:/i.test(s)) return s;
     if (!/\s/.test(s) && /^[\w-]+(\.[\w-]+)+/.test(s)) return 'https://' + s;
     return 'https://www.google.com/search?q=' + encodeURIComponent(s);
   }
 
-  /* ── Tab strip ─────────────────────────────────────────────── */
+  /* ── Tab strip ────────────────────────────────────────────── */
   function renderTabs() {
     tabStrip.innerHTML = '';
     for (const tab of allTabs) {
       const el = document.createElement('div');
       el.className = 'tab-chip' + (tab.id === activeId ? ' active' : '');
-      const fav = document.createElement('span');
-      fav.className = 'tc-favicon';
-      fav.textContent = tab.loading ? '⟳' : favicon(tab.url);
-      const title = document.createElement('span');
-      title.className = 'tc-title';
-      title.textContent = tab.title || 'New Tab';
-      const close = document.createElement('span');
-      close.className = 'tc-close';
-      close.textContent = '✕';
-      close.addEventListener('click', e => { e.stopPropagation(); api.send('tabs:close', tab.id); });
-      el.appendChild(fav);
-      el.appendChild(title);
-      el.appendChild(close);
-      el.addEventListener('click', () => api.send('tabs:setActive', tab.id));
+      el.innerHTML = '<span class="tc-favicon">' + (tab.loading ? '⟳' : favicon(tab.url)) + '</span><span class="tc-title">' + (tab.title || 'New Tab') + '</span><span class="tc-close">✕</span>';
+      el.querySelector('.tc-close').addEventListener('click', e => { e.stopPropagation(); api.invoke('tabs:close', tab.id); });
+      el.addEventListener('click', () => api.invoke('tabs:setActive', tab.id));
       tabStrip.appendChild(el);
     }
     if (tabCount) tabCount.textContent = allTabs.length || 1;
   }
 
-  /* ── URL bar + home visibility ─────────────────────────────── */
+  /* ── View sync ────────────────────────────────────────────── */
   function syncView() {
     const hasUrl = !!activeUrl;
     homeEl.classList.toggle('hidden', hasUrl);
-    urlBar.classList.toggle('hidden', !hasUrl);
-    urlBarText.textContent = hasUrl ? activeUrl : '';
+    urlBar.style.display = hasUrl ? 'flex' : 'none';
+    urlBarText.textContent = hasUrl ? (activeTitle || activeUrl) : '';
     urlEditBar.classList.add('hidden');
-    urlBar.style.display = hasUrl ? '' : 'none';
   }
 
-  /* ── URL edit bar ──────────────────────────────────────────── */
+  /* ── URL edit bar ─────────────────────────────────────────── */
   function openUrlEdit() {
     urlEditBar.classList.remove('hidden');
-    urlBar.classList.add('hidden');
+    urlBar.style.display = 'none';
     urlInput.value = activeUrl || '';
     urlInput.focus();
     urlInput.select();
   }
   function closeUrlEdit() {
     urlEditBar.classList.add('hidden');
-    urlBar.classList.remove('hidden');
+    urlBar.style.display = activeUrl ? 'flex' : 'none';
   }
-
   urlBar.addEventListener('click', openUrlEdit);
   urlInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
@@ -126,9 +114,9 @@
     }
     if (e.key === 'Escape') closeUrlEdit();
   });
-  urlInput.addEventListener('blur', () => { setTimeout(closeUrlEdit, 150); });
+  urlInput.addEventListener('blur', () => setTimeout(closeUrlEdit, 150));
 
-  /* ── Home search (sole search interface) ───────────────────── */
+  /* ── Home search (sole search interface) ──────────────────── */
   homeInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       const url = normalize(homeInput.value);
@@ -138,7 +126,7 @@
     e.stopPropagation();
   });
 
-  /* ── Menu ──────────────────────────────────────────────────── */
+  /* ── Menu ─────────────────────────────────────────────────── */
   const MENU_ITEMS = [
     { label: 'New Tab', icon: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' },
     { label: 'Bookmarks', icon: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>' },
@@ -159,17 +147,17 @@
   }
   function handleMenu(action) {
     closeMenu();
-    if (action === 'New Tab') api.send('tabs:create', {});
+    if (action === 'New Tab') api.invoke('tabs:create', {});
     else if (action === 'Bookmarks') openPanel('bookmarks', 'Bookmarks');
     else if (action === 'History') openPanel('history', 'History');
     else if (action === 'Downloads') openPanel('downloads', 'Downloads');
-    else if (action === 'Refresh') { const id = activeId; if (id) api.send('tabs:reload', id); }
+    else if (action === 'Refresh') { if (activeId) api.invoke('tabs:reload', activeId); }
     else if (action === 'Settings') openPanel('settings', 'Settings');
   }
   function openMenu() { buildMenu(); menuBackdrop.classList.add('open'); sideMenu.classList.add('open'); }
   function closeMenu() { menuBackdrop.classList.remove('open'); sideMenu.classList.remove('open'); }
 
-  /* ── Panels ────────────────────────────────────────────────── */
+  /* ── Panels ───────────────────────────────────────────────── */
   function openPanel(type, title) {
     panelTitle.textContent = title;
     panelAction.innerHTML = '';
@@ -243,21 +231,15 @@
     const sel = (opts, val, cb) => { const s = document.createElement('select'); s.className = 'setting-sel'; opts.forEach(o => { const op = document.createElement('option'); op.value = o.v; op.textContent = o.l; if (o.v === val) op.selected = true; s.appendChild(op); }); s.addEventListener('change', () => cb(s.value)); return s; };
 
     panelBody.appendChild(sec('General'));
-    panelBody.appendChild(row(i18n.t('settings.language'), sel(avail.map(l => ({ v: l, l: l.toUpperCase() })), cfg.language, async v => { await api.invoke('settings:set', 'language', v); await i18n.loadFor(v); applyI18n(); renderSettings(); })));
-    panelBody.appendChild(row(i18n.t('settings.searchEngine'), sel([{ v: 'google', l: 'Google' }, { v: 'bing', l: 'Bing' }, { v: 'duckduckgo', l: 'DuckDuckGo' }], cfg.searchEngine, v => api.invoke('settings:set', 'searchEngine', v))));
-    panelBody.appendChild(row(i18n.t('settings.homePage'), (() => { const i = document.createElement('input'); i.className = 'setting-input'; i.value = cfg.homePage || ''; i.addEventListener('change', () => api.invoke('settings:set', 'homePage', i.value.trim())); return i; })()));
-
+    panelBody.appendChild(row('Language', sel(avail.map(l => ({ v: l, l: l.toUpperCase() })), cfg.language, async v => { await api.invoke('settings:set', 'language', v); await i18n.load(v); applyI18n(); renderSettings(); })));
+    panelBody.appendChild(row('Search Engine', sel([{ v: 'google', l: 'Google' }, { v: 'bing', l: 'Bing' }, { v: 'duckduckgo', l: 'DuckDuckGo' }], cfg.searchEngine, v => api.invoke('settings:set', 'searchEngine', v))));
     panelBody.appendChild(sec('Ad Blocking'));
-    panelBody.appendChild(row(i18n.t('settings.adblockEnabled'), sw(cfg.adblock.enabled, v => { cfg.adblock.enabled = v; api.invoke('settings:set', 'adblock', cfg.adblock); })));
+    panelBody.appendChild(row('Ad Blocking', sw(cfg.adblock.enabled, v => { cfg.adblock.enabled = v; api.invoke('settings:set', 'adblock', cfg.adblock); })));
     const st = await api.invoke('adblock:getStats').catch(() => null);
-    if (st) panelBody.appendChild(row(i18n.t('settings.adblockStats'), '<span style="color:var(--accent)">' + st.blocked + '</span>'));
-
-    panelBody.appendChild(sec('Downloads'));
-    panelBody.appendChild(row(i18n.t('settings.askWhereToSave'), sw(cfg.askWhereToSave, v => api.invoke('settings:set', 'askWhereToSave', v))));
-
-    panelBody.appendChild(sec('Clear Data'));
-    const clrBtn = document.createElement('button'); clrBtn.className = 'btn'; clrBtn.textContent = i18n.t('settings.clearHistory');
-    clrBtn.addEventListener('click', async () => { if (confirm(i18n.t('dialog.clearHistory'))) { await api.invoke('history:clear'); showToast('History cleared'); } });
+    if (st) panelBody.appendChild(row('Blocked', '<span style="color:var(--accent)">' + st.blocked + '</span>'));
+    panelBody.appendChild(sec('Clear'));
+    const clrBtn = document.createElement('button'); clrBtn.className = 'btn'; clrBtn.textContent = 'Clear History';
+    clrBtn.addEventListener('click', async () => { if (confirm('Clear all history?')) { await api.invoke('history:clear'); toast('History cleared'); } });
     panelBody.appendChild(clrBtn);
   }
   async function renderSiteSettings() {
@@ -270,34 +252,34 @@
     panelBody.appendChild(hostEl);
     const sw = (on, cb) => { const el = document.createElement('div'); el.className = 'switch' + (on ? ' on' : ''); el.addEventListener('click', () => { el.classList.toggle('on'); cb(el.classList.contains('on')); }); return el; };
     const row = (lbl, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + lbl + '</label>'; el.appendChild(ctrl); return el; };
-    const save = (h, r) => { api.invoke('site:setRule', h, r); showToast('Saved'); };
     for (const [lbl, rk] of [['Ad blocking', 'adblockEnabled'], ['JavaScript', 'javascript'], ['Pop-ups', 'popups']]) {
-      panelBody.appendChild(row(lbl, sw(rule[rk] || false, v => { rule[rk] = v; save(host, rule); })));
+      panelBody.appendChild(row(lbl, sw(rule[rk] || false, v => { rule[rk] = v; api.invoke('site:setRule', host, rule); toast('Saved'); })));
     }
-    const uaRow = document.createElement('div'); uaRow.className = 'mg-item'; uaRow.style.flexDirection = 'column'; uaRow.style.alignItems = 'stretch';
-    const uaIn = document.createElement('textarea'); uaIn.className = 'setting-input'; uaIn.value = rule.userAgent || ''; uaIn.placeholder = i18n.t('site.default');
-    uaIn.addEventListener('change', () => { const v = uaIn.value.trim(); if (v) rule.userAgent = v; else delete rule.userAgent; save(host, rule); });
-    const uaLabel = document.createElement('div'); uaLabel.style.cssText = 'font-size:11px;color:var(--fg-dim);margin-bottom:6px'; uaLabel.textContent = 'User Agent';
-    uaRow.appendChild(uaLabel); uaRow.appendChild(uaIn);
-    panelBody.appendChild(uaRow);
   }
 
-  /* ── Event wiring ──────────────────────────────────────────── */
-
-  // Bottom nav buttons
-  $('navBack').addEventListener('click', () => { if (activeId) api.send('tabs:goBack', activeId); });
-  $('navForward').addEventListener('click', () => { if (activeId) api.send('tabs:goForward', activeId); });
+  /* ── Button wiring (ALL use api.invoke) ───────────────────── */
+  $('navBack').addEventListener('click', async () => {
+    if (!activeId) return;
+    try { await api.invoke('tabs:goBack', activeId); } catch (e) { console.error('goBack', e); }
+  });
+  $('navForward').addEventListener('click', async () => {
+    if (!activeId) return;
+    try { await api.invoke('tabs:goForward', activeId); } catch (e) { console.error('goForward', e); }
+  });
   $('navHome').addEventListener('click', () => {
     homeEl.classList.remove('hidden');
     urlBar.style.display = 'none';
     homeInput.value = '';
-    setTimeout(() => homeInput.focus(), 100);
+    setTimeout(() => homeInput.focus(), 50);
   });
-  $('navTabs').addEventListener('click', () => {
-    if (allTabs.length > 1) {
-      const nextIdx = (allTabs.findIndex(t => t.id === activeId) + 1) % allTabs.length;
-      api.send('tabs:setActive', allTabs[nextIdx].id);
-    }
+  $('navTabs').addEventListener('click', async () => {
+    try {
+      const tabs = await api.invoke('tabs:getAll');
+      if (tabs && tabs.length > 1) {
+        const idx = (tabs.findIndex(t => t.id === activeId) + 1) % tabs.length;
+        await api.invoke('tabs:setActive', tabs[idx].id);
+      }
+    } catch (e) { console.error('tabs cycle', e); }
   });
   $('navMenu').addEventListener('click', openMenu);
 
@@ -314,22 +296,20 @@
   $('panel-back').addEventListener('click', closePanel);
   panelSearch.addEventListener('input', loadPanel);
 
-  // macOS window controls
-  $('btnClose').addEventListener('click', () => api.send('window:close'));
-  $('btnMinimize').addEventListener('click', () => api.send('window:minimize'));
-  $('btnMaximize').addEventListener('click', () => api.send('window:maximize'));
+  // macOS window controls (ALL use api.invoke)
+  $('btnClose').addEventListener('click', async () => { try { await api.invoke('window:close'); } catch {} });
+  $('btnMinimize').addEventListener('click', async () => { try { await api.invoke('window:minimize'); } catch {} });
+  $('btnMaximize').addEventListener('click', async () => { try { await api.invoke('window:maximize'); } catch {} });
 
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     const m = e.ctrlKey || e.metaKey;
-    if (m) {
-      if (e.key === 't') { e.preventDefault(); api.send('tabs:create', {}); }
-      if (e.key === 'l') { e.preventDefault(); openUrlEdit(); }
-      if (e.key === 'w') { e.preventDefault(); if (activeId) api.send('tabs:close', activeId); }
-    }
+    if (m && e.key === 't') { e.preventDefault(); api.invoke('tabs:create', {}); }
+    if (m && e.key === 'l') { e.preventDefault(); openUrlEdit(); }
+    if (m && e.key === 'w') { e.preventDefault(); if (activeId) api.invoke('tabs:close', activeId); }
   });
 
-  // IPC events
+  // IPC from main
   api.on('tabs:changed', (tabs, aid, url, title) => {
     allTabs = Array.isArray(tabs) ? tabs : [];
     activeId = aid || '';
@@ -338,8 +318,12 @@
     renderTabs();
     syncView();
   });
+  api.on('window:maximized', isMax => {
+    const dot = $('btnMaximize');
+    if (dot) dot.title = isMax ? 'Restore' : 'Maximize';
+  });
 
-  /* ── Init ───────────────────────────────────────────────────── */
+  /* ── Init ─────────────────────────────────────────────────── */
   (async () => {
     await i18n.init();
     applyI18n();
@@ -347,9 +331,9 @@
       const tabs = await api.invoke('tabs:getAll');
       const aid = await api.invoke('tabs:getActiveId');
       if (Array.isArray(tabs)) { allTabs = tabs; activeId = aid || ''; }
-    } catch {}
+    } catch (e) { console.error('init tabs', e); }
     renderTabs();
     syncView();
-    homeInput.focus();
+    setTimeout(() => homeInput.focus(), 100);
   })();
 })();

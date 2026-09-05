@@ -1,6 +1,3 @@
-/* ═══════════════════════════════════════════════════════════════
-   AM Browser — Via Browser design language
-   ═══════════════════════════════════════════════════════════════ */
 :root {
   --bg: #000000;
   --fg: #ffffff;
@@ -31,18 +28,18 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .hidden { display: none !important; }
 .no-drag { -webkit-app-region: no-drag; }
 
-/* ── Drag region ───────────────────────────────────────────── */
+/* Drag region */
 .drag-region {
   -webkit-app-region: drag;
-  position: fixed; top: 0; left: 0; right: 0; height: 48px;
+  position: fixed; top: 0; left: 0; right: 0; height: 52px;
   z-index: 100;
 }
 
-/* ── macOS Traffic Light Window Controls ───────────────────── */
+/* ── macOS Traffic Lights — RIGHT side ──────────────────────── */
 .win-controls {
-  position: fixed; top: 0; left: 14px; height: 48px;
+  position: fixed; top: 0; right: 0; height: 52px;
   display: flex; align-items: center; gap: 8px;
-  z-index: 500;
+  padding-right: 14px; z-index: 500;
 }
 .win-dot {
   width: 12px; height: 12px; border-radius: 50%;
@@ -51,55 +48,43 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .win-close { background: var(--dot-red); }
 .win-minimize { background: var(--dot-yellow); }
 .win-maximize { background: var(--dot-green); }
-/* Hover glyphs */
 .win-dot::after {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700; line-height: 1;
-  opacity: 0; transition: opacity var(--transition-fast);
-  pointer-events: none;
-  color: rgba(0,0,0,0.55);
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; opacity: 0; transition: opacity var(--transition-fast);
+  pointer-events: none; color: rgba(0,0,0,0.55);
 }
 .win-close::after { content: '✕'; font-size: 8px; }
 .win-minimize::after { content: '−'; }
 .win-maximize::after { content: '+'; }
 .win-controls:hover .win-dot::after { opacity: 1; }
-/* Dim state when other buttons are focused */
-.win-controls:not(:hover) .win-close { background: #555; }
-.win-controls:not(:hover) .win-minimize { background: #555; }
+.win-controls:not(:hover) .win-close,
+.win-controls:not(:hover) .win-minimize,
 .win-controls:not(:hover) .win-maximize { background: #555; }
-/* Pressed state */
 .win-dot:active { opacity: 0.7; }
 
-/* ── Tab strip (slim chip row) ─────────────────────────────── */
+/* ── Tab strip ──────────────────────────────────────────────── */
 .tab-strip {
-  position: fixed; top: 0; left: 100px; right: 12px; height: 48px;
+  position: fixed; top: 0; left: 12px; right: 110px; height: 52px;
   display: flex; align-items: center; gap: 2px; z-index: 90;
   overflow-x: auto; scrollbar-width: none;
   -webkit-app-region: no-drag;
 }
 .tab-strip::-webkit-scrollbar { display: none; }
 .tab-chip {
-  height: 30px; padding: 0 12px; display: flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 12px; display: flex; align-items: center; gap: 6px;
   border-radius: var(--radius-pill); color: var(--fg-muted); font-size: 12px;
   white-space: nowrap; flex-shrink: 0; max-width: 180px; cursor: pointer;
   border: 1px solid transparent; transition: all var(--transition-fast);
 }
 .tab-chip:hover { background: rgba(255,255,255,0.04); color: var(--fg); }
-.tab-chip.active {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.08);
-  color: var(--fg);
-}
+.tab-chip.active { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); color: var(--fg); }
 .tab-chip .tc-favicon {
   width: 14px; height: 14px; border-radius: 3px; font-size: 9px;
   display: flex; align-items: center; justify-content: center;
   background: rgba(255,255,255,0.06); color: var(--fg-dim); flex-shrink: 0;
 }
 .tab-chip.active .tc-favicon { background: rgba(90,131,255,0.15); color: var(--accent); }
-.tab-chip .tc-title {
-  overflow: hidden; text-overflow: ellipsis; max-width: 120px;
-}
+.tab-chip .tc-title { overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
 .tab-chip .tc-close {
   width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
   border-radius: 50%; color: var(--fg-dim); font-size: 11px; opacity: 0; flex-shrink: 0;
@@ -108,12 +93,11 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .tab-chip:hover .tc-close { opacity: 1; }
 .tab-chip .tc-close:hover { background: rgba(255,255,255,0.10); color: var(--fg); }
 
-/* ── URL display bar (minimal, below tab strip) ────────────── */
+/* ── URL display bar ────────────────────────────────────────── */
 .url-bar {
-  position: fixed; top: 48px; left: 0; right: 0; height: 36px;
+  position: fixed; top: 52px; left: 0; right: 0; height: 32px;
   display: flex; align-items: center; justify-content: center;
-  z-index: 89; padding: 0 110px 0 110px;
-  cursor: text;
+  z-index: 89; padding: 0 120px; cursor: text;
 }
 .url-bar-text {
   font-size: 12px; color: var(--fg-dim);
@@ -121,55 +105,48 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   padding: 4px 14px; border-radius: 8px;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
-.url-bar:hover .url-bar-text {
-  background: rgba(255,255,255,0.04);
-  color: var(--fg-muted);
-}
+.url-bar:hover .url-bar-text { background: rgba(255,255,255,0.04); color: var(--fg-muted); }
 .url-edit-bar {
-  position: fixed; top: 48px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
   width: min(500px, 80vw); height: 36px; z-index: 200;
   -webkit-app-region: no-drag;
 }
-.url-edit-bar .omnibox-pill {
+.url-pill {
   display: flex; align-items: center; width: 100%; height: 36px;
   border: 1px solid var(--accent); border-radius: var(--radius-pill);
   padding: 0 14px; gap: 8px; color: var(--fg-muted);
-  background: var(--bg);
-  box-shadow: 0 0 0 2px rgba(90,131,255,0.12);
+  background: var(--bg); box-shadow: 0 0 0 2px rgba(90,131,255,0.12);
 }
-.url-edit-bar .omnibox-pill svg { width: 16px; height: 16px; flex-shrink: 0; }
-.url-edit-bar .url-input {
-  flex: 1; height: 28px; font-size: 13px; color: var(--fg);
-}
-.url-edit-bar .url-input::placeholder { color: var(--fg-dim); }
+.url-pill svg { width: 16px; height: 16px; flex-shrink: 0; }
+.url-pill .url-input { flex: 1; height: 28px; font-size: 13px; color: var(--fg); }
+.url-pill .url-input::placeholder { color: var(--fg-dim); }
 
-/* ── Bottom navigation pill ────────────────────────────────── */
+/* ── Bottom nav pill (Via style, properly centered) ─────────── */
 .bottom-nav {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-  z-index: 500; display: flex; gap: 2px;
+  z-index: 500; display: flex; align-items: stretch;
   background: rgba(18, 18, 18, 0.82);
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: var(--radius-pill);
-  padding: 0 6px; height: 56px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.55);
+  padding: 6px 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.55);
 }
 .nav-btn {
   width: 46px; height: 44px; display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; color: #9aa0a6;
+  border-radius: 50%; color: #9aa0a6; flex-shrink: 0;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 .nav-btn:hover { color: var(--fg); background: rgba(255,255,255,0.10); }
 .nav-btn:active { background: rgba(255,255,255,0.18); }
-.nav-btn svg { width: 22px; height: 22px; }
+.nav-btn svg { width: 22px; height: 22px; display: block; }
 .tab-count {
   display: flex; align-items: center; justify-content: center;
   min-width: 22px; height: 18px; border: 1.5px solid currentColor;
   border-radius: 5px; font-size: 9px; font-weight: 700; color: var(--fg);
-  padding: 0 3px;
+  padding: 0 3px; line-height: 1;
 }
 
-/* ── Menu backdrop + slide-in ──────────────────────────────── */
+/* ── Menu ───────────────────────────────────────────────────── */
 #menu-backdrop {
   position: fixed; inset: 0; z-index: 600;
   background: rgba(0,0,0,0.5); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
@@ -189,6 +166,15 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
 .ph b { font-size: 16px; font-weight: 600; }
+.logo-text {
+  margin-right: 8px; font-size: 18px; font-weight: 800; color: var(--accent);
+}
+.menu-close-btn {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; color: var(--fg-dim); font-size: 14px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.menu-close-btn:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
 #side-menu-grid {
   flex: 1; overflow-y: auto; padding: 16px 12px;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; align-content: start;
@@ -211,7 +197,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 }
 #side-menu-footer svg { width: 20px; height: 20px; }
 
-/* ── Panel backdrop + right slide ──────────────────────────── */
+/* ── Panel ──────────────────────────────────────────────────── */
 #panel-backdrop {
   position: fixed; inset: 0; z-index: 800;
   background: rgba(0,0,0,0.6); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
@@ -242,12 +228,10 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
   border-radius: 50%; color: var(--fg-dim); font-size: 14px; opacity: 0;
-  transition: opacity var(--transition-fast), background var(--transition-fast);
+  transition: opacity var(--transition-fast);
 }
 .pi:hover .pi-del { opacity: 1; }
 .pi-del:hover { background: rgba(255,255,255,0.06); color: #ff6b6b; }
-
-/* ── Settings (Via style) ─────────────────────────────────── */
 .mg-item {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 16px; border-bottom: 1px solid var(--border);
@@ -286,8 +270,6 @@ textarea.setting-input { min-height: 56px; resize: vertical; font-family: inheri
   border-radius: var(--radius-md); color: var(--fg); font-size: 14px;
 }
 .btn:hover { background: rgba(255,255,255,0.08); }
-
-/* ── Downloads (Via style) ─────────────────────────────────── */
 .dl-item { padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .dl-name { font-size: 14px; color: var(--fg); }
 .dl-meta { font-size: 11px; color: var(--fg-muted); margin-top: 3px; }
@@ -298,7 +280,7 @@ textarea.setting-input { min-height: 56px; resize: vertical; font-family: inheri
 }
 .dl-actions button:hover { color: var(--fg); background: rgba(255,255,255,0.08); }
 
-/* ── Home screen ───────────────────────────────────────────── */
+/* ── Home screen ────────────────────────────────────────────── */
 #home {
   position: fixed; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
@@ -322,16 +304,15 @@ textarea.setting-input { min-height: 56px; resize: vertical; font-family: inheri
 #home-search input { flex: 1; height: 32px; font-size: 15px; color: var(--fg); }
 #home-search input::placeholder { color: var(--fg-muted); }
 
-/* ── Toast ─────────────────────────────────────────────────── */
+/* Toast */
 #toast {
   position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
   background: rgba(20,20,20,0.92); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   border: 1px solid var(--border); color: var(--fg);
   padding: 10px 20px; border-radius: 24px; font-size: 13px;
   opacity: 0; pointer-events: none; transition: all var(--transition); z-index: 950;
-  white-space: nowrap; max-width: 80vw; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 80vw;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .empty-state { text-align: center; padding: 48px 24px; color: var(--fg-dim); font-size: 14px; line-height: 1.6; }
-
 button:focus-visible, input:focus-visible { outline: 2px solid rgba(90,131,255,0.4); outline-offset: 1px; }

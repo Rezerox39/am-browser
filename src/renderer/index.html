@@ -8,31 +8,31 @@
 </head>
 <body>
 
-  <!-- ── Drag region (top area, behind tabs) ──────────────── -->
+  <!-- Drag region -->
   <div class="drag-region"></div>
 
-  <!-- ── macOS traffic-light window controls ──────────────── -->
+  <!-- macOS Traffic Lights — RIGHT side -->
   <div class="win-controls no-drag">
     <button class="win-dot win-close" id="btnClose" title="Close"></button>
     <button class="win-dot win-minimize" id="btnMinimize" title="Minimize"></button>
     <button class="win-dot win-maximize" id="btnMaximize" title="Maximize"></button>
   </div>
 
-  <!-- ── Tab strip (slim chips, top) ──────────────────────── -->
+  <!-- Tab strip -->
   <div class="tab-strip" id="tabStrip"></div>
 
-  <!-- ── Minimal URL display (shows current URL, click to edit) -->
+  <!-- URL display (clickable to edit) -->
   <div class="url-bar" id="urlBar">
     <span class="url-bar-text" id="urlBarText">New Tab</span>
   </div>
   <div class="url-edit-bar hidden" id="urlEditBar">
-    <div class="omnibox-pill">
+    <div class="url-pill">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       <input id="urlInput" class="url-input" placeholder="Search or enter URL" autocomplete="off" spellcheck="false" />
     </div>
   </div>
 
-  <!-- ── Bottom navigation pill (Via Browser style) ──────── -->
+  <!-- Bottom nav pill -->
   <nav class="bottom-nav no-drag" id="bottomNav">
     <button class="nav-btn" id="navBack" title="Back">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -51,19 +51,18 @@
     </button>
   </nav>
 
-  <!-- ── Menu backdrop ────────────────────────────────────── -->
+  <!-- Menu backdrop -->
   <div id="menu-backdrop" class="no-drag"></div>
 
-  <!-- ── Side menu (slide-in from right) ──────────────────── -->
+  <!-- Side menu -->
   <div id="side-menu" class="no-drag">
     <div class="ph">
-      <span style="margin-right:8px;font-size:18px;font-weight:800;color:var(--accent)">AM</span>
+      <span class="logo-text">AM</span>
       <b data-i18n="app.name">AM</b>
       <span style="flex:1"></span>
-      <button id="menu-close-btn" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:8px;color:var(--fg-dim);font-size:14px">✕</button>
+      <button id="menu-close-btn" class="menu-close-btn">✕</button>
     </div>
     <div id="side-menu-grid"></div>
-    <div id="side-menu-pagination"></div>
     <div id="side-menu-footer">
       <button id="menu-history">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -84,7 +83,7 @@
     </div>
   </div>
 
-  <!-- ── Panel backdrop + right slide panel ────────────────── -->
+  <!-- Panel backdrop + panel -->
   <div id="panel-backdrop" class="no-drag"></div>
   <div id="panel" class="no-drag">
     <div class="ph">
@@ -93,25 +92,24 @@
       </button>
       <b id="panel-title"></b>
       <span style="flex:1"></span>
-      <input id="panel-search" class="search-input hidden" placeholder="Search..." data-i18n-placeholder="history.searchPlaceholder" />
+      <input id="panel-search" class="search-input hidden" placeholder="Search..." />
       <button id="panel-action"></button>
     </div>
     <div id="panel-body"></div>
   </div>
 
-  <!-- ── Home screen (sole search interface) ──────────────── -->
+  <!-- Home screen -->
   <div id="home">
     <div class="home-logo-text">AM</div>
     <div id="home-search-wrap">
       <div id="home-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input id="home-input" type="text" placeholder="Search or enter URL" data-i18n-placeholder="home.searchPlaceholder" autocomplete="off" spellcheck="false" />
+        <input id="home-input" type="text" placeholder="Search or enter URL" autocomplete="off" spellcheck="false" />
       </div>
     </div>
   </div>
 
   <div id="toast"></div>
-
   <script src="app.js"></script>
 </body>
 </html>
