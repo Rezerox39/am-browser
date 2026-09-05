@@ -38,8 +38,7 @@ function log(level, component, message, extra) {
     }
     const ts = new Date().toISOString();
     const extraStr = extra ? ' ' + JSON.stringify(extra) : '';
-    const line = ts + ' [' + level.toUpperCase() + '] [' + component + '] ' + message + extraStr + '
-';
+    const line = ts + ' [' + level.toUpperCase() + '] [' + component + '] ' + message + extraStr + '';
     fs.writeSync(fd, line);
   } catch { /* silent */ }
 }

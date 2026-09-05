@@ -35,8 +35,7 @@ function loadBuiltinLists(cfg) {
 
 function loadCustomRules(cfg) {
   if (Array.isArray(cfg.customRules) && cfg.customRules.length > 0) {
-    engine.loadList(cfg.customRules.join('
-'), 'custom');
+    engine.loadList(cfg.customRules.join(''), 'custom');
   }
 }
 
