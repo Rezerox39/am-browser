@@ -2,491 +2,337 @@
 
 (() => {
   const api = window.am;
-  if (!api) {
-    document.body.innerHTML = '<h1 style="color:#fff;padding:40px">Preload unavailable</h1>';
-    return;
-  }
+  if (!api) { document.body.innerHTML = '<h1 style="color:#fff;padding:40px">Preload unavailable</h1>'; return; }
 
-  /* ── Tiny i18n client ───────────────────────────────────── */
+  /* ── i18n ──────────────────────────────────────────────────── */
   const i18n = {
-    strings: {},
-    fallback: {},
+    strings: {}, fallback: {},
     async init() {
       try {
-        const settings = await api.invoke('settings:get');
-        await this.loadFor(settings.language || 'en');
-        if (settings.language !== 'en') {
-          try { this.fallback = await (await fetch('i18n/locales/en.json')).json(); } catch {}
-        }
-      } catch (e) { console.error('i18n init', e); }
+        const s = await api.invoke('settings:get');
+        await this.loadFor(s.language || 'en');
+        if (s.language !== 'en') try { this.fallback = await (await fetch('i18n/locales/en.json')).json(); } catch {}
+      } catch {}
     },
-    async loadFor(locale) {
-      try { this.strings = await (await fetch('i18n/locales/' + locale + '.json')).json(); } catch { this.strings = this.fallback; }
-      if (locale !== 'en' && Object.keys(this.fallback).length === 0) {
-        try { this.fallback = await (await fetch('i18n/locales/en.json')).json(); } catch {}
-      }
+    async loadFor(l) {
+      try { this.strings = await (await fetch('i18n/locales/' + l + '.json')).json(); } catch { this.strings = this.fallback; }
+      if (l !== 'en' && !Object.keys(this.fallback).length) try { this.fallback = await (await fetch('i18n/locales/en.json')).json(); } catch {}
     },
-    t(key, vars) {
-      let val = this.strings[key] || this.fallback[key] || key;
-      if (vars && typeof val === 'string') {
-        for (const [k, v] of Object.entries(vars)) val = val.split('{{' + k + '}}').join(String(v));
-      }
-      return val;
+    t(k, v) {
+      let s = this.strings[k] || this.fallback[k] || k;
+      if (v) Object.entries(v).forEach(([a,b]) => { s = s.split('{{'+a+'}}').join(String(b)); });
+      return s;
     },
   };
+  const applyI18n = () => {
+    document.querySelectorAll('[data-i18n]').forEach(e => { const k = e.getAttribute('data-i18n'); if (k) e.textContent = i18n.t(k); });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(e => { const k = e.getAttribute('data-i18n-placeholder'); if (k) e.placeholder = i18n.t(k); });
+  };
 
-  /* ── DOM refs ───────────────────────────────────────────── */
-  const $ = (id) => document.getElementById(id);
-  const urlInput = $('urlInput');
-  const omniboxLock = $('omniboxLock');
-  const tabList = $('tabList');
-  const panels = { history: $('panelHistory'), bookmarks: $('panelBookmarks'), downloads: $('panelDownloads'), settings: $('panelSettings'), siteSettings: $('panelSiteSettings') };
-  let allTabs = [], activeId = null, activeUrl = '', activeTitle = '', currentPanel = null;
+  /* ── Refs ──────────────────────────────────────────────────── */
+  const $ = id => document.getElementById(id);
+  const urlInput = $('urlInput'), omniboxLock = $('omniboxLock');
+  const tabStrip = $('tabStrip');
+  const menuBackdrop = $('menu-backdrop'), sideMenu = $('side-menu'), sideMenuGrid = $('side-menu-grid');
+  const panelBackdrop = $('panel-backdrop'), panel = $('panel'), panelTitle = $('panel-title'), panelBody = $('panel-body'), panelAction = $('panel-action'), panelSearch = $('panel-search');
+  const homeEl = $('home');
+  let allTabs = [], activeId = '', activeUrl = '', activeTitle = '';
+  let currentPanel = '', lastPanelType = '';
 
-  function applyI18n() {
-    document.querySelectorAll('[data-i18n]').forEach((el) => { const k = el.getAttribute('data-i18n'); if (k) el.textContent = i18n.t(k); });
-    document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { const k = el.getAttribute('data-i18n-placeholder'); if (k) el.placeholder = i18n.t(k); });
-  }
+  /* ── Icons (Feather-style inline SVGs) ─────────────────────── */
+  const IC = {
+    globe: '<path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    back: '<polyline points="15 18 9 12 15 6"/>',
+    forward: '<polyline points="9 18 15 12 9 6"/>',
+    home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+    newTab: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    history: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    downloads: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    tab: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/>',
+    scripts: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  };
+  function svg(name) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">' + (IC[name]||IC.globe) + '</svg>'; }
 
-  function faviconFor(url) { try { return new URL(url).hostname[0]?.toUpperCase() || '·'; } catch { return '·'; } }
-  function fmtBytes(b) { if (!b || isNaN(b)) return '0 B'; const u = ['B','KB','MB','GB']; let i = 0, n = b; while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + ' ' + u[i]; }
+  /* ── Helpers ───────────────────────────────────────────────── */
+  const favicon = url => { try { return new URL(url).hostname[0]?.toUpperCase()||'?'; } catch { return '?'; } };
+  const fmtBytes = b => { if (!b||isNaN(b)) return '0 B'; const u=['B','KB','MB','GB']; let i=0,n=b; while(n>=1024&&i<3){n/=1024;i++;} return n.toFixed(i?1:0)+' '+u[i]; };
 
-  /* ── Tab list rendering ─────────────────────────────────── */
+  /* ── Tab strip ─────────────────────────────────────────────── */
   function renderTabs() {
-    tabList.innerHTML = '';
+    tabStrip.innerHTML = '';
     for (const tab of allTabs) {
       const el = document.createElement('div');
-      el.className = 'pill-tab' + (tab.id === activeId ? ' active' : '');
+      el.className = 'tab-chip' + (tab.id === activeId ? ' active' : '');
       el.addEventListener('click', () => api.invoke('tabs:setActive', tab.id));
-      el.innerHTML = '<span class="tab-glow"></span><span class="tab-icon">' + (tab.loading ? '⟳' : faviconFor(tab.url)) + '</span><span class="tab-title">' + (tab.title || 'New Tab') + '</span>';
-      const close = document.createElement('button');
-      close.className = 'tab-close-btn';
-      close.textContent = '✕';
-      close.addEventListener('click', (e) => { e.stopPropagation(); api.send('tabs:close', tab.id); });
-      el.appendChild(close);
-      tabList.appendChild(el);
+      el.innerHTML = '<span>' + favicon(tab.url) + '</span><span class="tc-title">' + (tab.title || 'New Tab') + '</span>';
+      const cls = document.createElement('span');
+      cls.className = 'tc-close';
+      cls.textContent = '✕';
+      cls.addEventListener('click', e => { e.stopPropagation(); api.send('tabs:close', tab.id); });
+      el.appendChild(cls);
+      tabStrip.appendChild(el);
     }
   }
-
-  function syncAddressBar() {
+  function syncBar() {
     if (document.activeElement === urlInput) return;
     urlInput.value = activeUrl || '';
-    const secure = activeUrl.startsWith('https://') || activeUrl.startsWith('am://');
-    omniboxLock.className = secure ? '' : 'idle';
-    omniboxLock.textContent = secure ? '🔒' : '🌐';
-    $('omniboxAction').classList.toggle('muted', !activeUrl);
+    omniboxLock.innerHTML = (activeUrl.startsWith('https://') || activeUrl.startsWith('am://'))
+      ? svg('bookmark') : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><circle cx="12" cy="12" r="10"/></svg>';
+    omniboxLock.style.color = activeUrl.startsWith('https://') ? 'var(--accent)' : 'var(--fg-dim)';
+    homeEl.classList.toggle('hidden', activeUrl !== '');
   }
 
-  /* ── Panels ─────────────────────────────────────────────── */
-  function closePanels() { Object.values(panels).forEach((p) => { p.style.display = 'none'; }); currentPanel = null; }
-  function openPanel(panel) { closePanels(); panel.style.display = 'flex'; currentPanel = panel; refreshPanel(panel); }
-  async function refreshPanel(panel) {
-    if (panel === panels.history) await renderHistory();
-    else if (panel === panels.bookmarks) await renderBookmarks();
-    else if (panel === panels.downloads) await renderDownloads();
-    else if (panel === panels.settings) await renderSettings();
-    else if (panel === panels.siteSettings) await renderSiteSettings();
+  /* ── Panels (Via slide-in) ────────────────────────────────── */
+  function openPanel(type, title) {
+    lastPanelType = type;
+    panelTitle.textContent = title;
+    panelAction.innerHTML = '';
+    panelSearch.classList.add('hidden');
+    if (type === 'history') {
+      panelSearch.classList.remove('hidden');
+      panelSearch.value = '';
+      panelAction.innerHTML = svg('bookmark');
+      panelAction.onclick = closePanel;
+    } else if (type === 'bookmarks') {
+      panelAction.innerHTML = svg('bookmark');
+      panelAction.onclick = closePanel;
+    } else if (type === 'downloads') {
+      panelAction.innerHTML = svg('downloads');
+      panelAction.onclick = closePanel;
+    } else if (type === 'settings') {
+      panelAction.innerHTML = svg('settings');
+      panelAction.onclick = closePanel;
+    } else if (type === 'siteSettings') {
+      panelAction.innerHTML = svg('settings');
+      panelAction.onclick = closePanel;
+    }
+    panelBackdrop.classList.add('open');
+    panel.classList.add('open');
+    currentPanel = type;
+    closeMenu();
+    refreshPanel();
   }
-  function empty(el, key) { el.innerHTML = '<div class="empty-state">' + i18n.t(key) + '</div>'; }
+  function closePanel() {
+    panelBackdrop.classList.remove('open');
+    panel.classList.remove('open');
+    currentPanel = '';
+  }
+  async function refreshPanel() {
+    const tb = currentPanel;
+    if (tb === 'history') return renderHistory();
+    if (tb === 'bookmarks') return renderBookmarks();
+    if (tb === 'downloads') return renderDownloads();
+    if (tb === 'settings') return renderSettings();
+    if (tb === 'siteSettings') return renderSiteSettings();
+  }
+
+  function empty(msg) { panelBody.innerHTML = '<div class="empty-state">' + msg + '</div>'; }
 
   async function renderHistory() {
-    const list = $('historyList');
-    const q = $('historySearch').value.trim();
-    let items; try { items = q ? await api.invoke('history:search', q, 50) : await api.invoke('history:getRecent', 100); } catch { return empty(list, 'error.title'); }
-    if (!items.length) return empty(list, 'history.empty');
-    list.innerHTML = '';
-    for (const item of items) {
-      const row = document.createElement('div');
-      row.className = 'panel-item';
-      row.addEventListener('click', () => { navigate(item.url); closePanels(); });
-      row.innerHTML = '<span class="item-favicon">' + faviconFor(item.url) + '</span><div class="item-main"><div class="item-title">' + (item.title || item.url) + '</div><div class="item-url">' + item.url + '</div></div>';
-      list.appendChild(row);
+    const q = panelSearch.value.trim();
+    let items; try { items = q ? await api.invoke('history:search',q,50) : await api.invoke('history:getRecent',100); } catch { return empty('Error'); }
+    if (!items.length) return empty(i18n.t('history.empty'));
+    panelBody.innerHTML = '';
+    for (const it of items) {
+      const d = document.createElement('div'); d.className = 'pi'; d.innerHTML = '<div class="pi-title">' + (it.title||it.url) + '</div><div class="pi-url">' + it.url + '</div>';
+      d.addEventListener('click', () => { navigate(it.url); closePanel(); });
+      panelBody.appendChild(d);
     }
   }
 
   async function renderBookmarks() {
-    const list = $('bookmarksList');
-    let items; try { items = await api.invoke('bookmarks:getAll'); } catch { return empty(list, 'error.title'); }
-    if (!items.length) return empty(list, 'bookmarks.empty');
-    list.innerHTML = '';
+    let items; try { items = await api.invoke('bookmarks:getAll'); } catch { return empty('Error'); }
+    if (!items.length) return empty(i18n.t('bookmarks.empty'));
+    panelBody.innerHTML = '';
     for (const bm of items) {
-      const row = document.createElement('div');
-      row.className = 'panel-item';
-      row.addEventListener('click', () => { navigate(bm.url); closePanels(); });
-      row.innerHTML = '<span class="item-favicon">' + faviconFor(bm.url) + '</span><div class="item-main"><div class="item-title">' + (bm.title || bm.url) + '</div><div class="item-url">' + bm.url + '</div></div>';
-      const del = document.createElement('button');
-      del.className = 'item-action';
-      del.textContent = '✕';
-      del.addEventListener('click', async (e) => { e.stopPropagation(); await api.invoke('bookmarks:remove', bm.id); renderBookmarks(); });
-      row.appendChild(del);
-      list.appendChild(row);
+      const d = document.createElement('div'); d.className = 'pi';
+      d.innerHTML = '<div class="pi-title">' + (bm.title||bm.url) + '</div><div class="pi-url">' + bm.url + '</div><span class="pi-del">✕</span>';
+      d.addEventListener('click', () => { navigate(bm.url); closePanel(); });
+      d.querySelector('.pi-del').addEventListener('click', async e => { e.stopPropagation(); await api.invoke('bookmarks:remove',bm.id); renderBookmarks(); });
+      panelBody.appendChild(d);
     }
   }
 
   async function renderDownloads() {
-    const list = $('downloadsList');
-    let items; try { items = await api.invoke('downloads:getAll'); } catch { return empty(list, 'error.title'); }
-    if (!items.length) return empty(list, 'downloads.empty');
-    list.innerHTML = '';
+    let items; try { items = await api.invoke('downloads:getAll'); } catch { return empty('Error'); }
+    if (!items.length) return empty(i18n.t('downloads.empty'));
+    panelBody.innerHTML = '';
     for (const dl of items) {
-      const row = document.createElement('div');
-      row.className = 'panel-item';
-      const stateStr = dl.state === 'progressing' ? i18n.t('downloads.downloading') : dl.state === 'failed' ? i18n.t('downloads.failed') : dl.state === 'cancelled' ? i18n.t('downloads.cancelled') : i18n.t('downloads.complete');
-      row.innerHTML = '<div class="item-main"><div class="item-title">' + dl.filename + '</div><div class="item-url">' + stateStr + ' · ' + fmtBytes(dl.receivedBytes || dl.totalBytes) + '</div></div>';
-      const act = document.createElement('button');
-      act.className = 'item-action';
-      act.textContent = dl.state === 'complete' ? '↯' : '✕';
-      act.addEventListener('click', async () => {
-        if (dl.state === 'complete' && dl.savePath) await api.invoke('downloads:openFile', dl.savePath);
-        else { await api.invoke('downloads:remove', dl.id); renderDownloads(); }
-      });
-      row.appendChild(act);
-      list.appendChild(row);
+      const stateStr = dl.state === 'progressing' ? 'Downloading...' : dl.state === 'failed' ? 'Failed' : dl.state === 'cancelled' ? 'Cancelled' : 'Complete';
+      const d = document.createElement('div'); d.className = 'dl-item';
+      d.innerHTML = '<div class="dl-name">' + dl.filename + '</div><div class="dl-meta">' + stateStr + ' · ' + fmtBytes(dl.receivedBytes||dl.totalBytes) + '</div><div class="dl-actions"><button>Open</button><button>Remove</button></div>';
+      d.querySelectorAll('button')[0].addEventListener('click', () => { if (dl.state==='complete'&&dl.savePath) api.invoke('downloads:openFile',dl.savePath); });
+      d.querySelectorAll('button')[1].addEventListener('click', async () => { await api.invoke('downloads:remove',dl.id); renderDownloads(); });
+      panelBody.appendChild(d);
     }
   }
 
   async function renderSettings() {
     const cfg = await api.invoke('settings:get');
-    const available = await api.invoke('i18n:getAvailable');
-    const sp = $('settingsPanel');
-    sp.innerHTML = '';
+    const avail = await api.invoke('i18n:getAvailable');
+    panelBody.innerHTML = '';
+    const sec = t => { const el = document.createElement('div'); el.className='sec-title'; el.textContent=t; return el; };
+    const row = (lbl, ctrl) => { const el=document.createElement('div'); el.className='mg-item'; el.innerHTML='<label>'+lbl+'</label>'; el.appendChild(typeof ctrl==='string'?Object.assign(document.createElement('span'),{className:'sub',innerHTML:ctrl}):ctrl); return el; };
+    const sw = (id,on,cb) => { const el=document.createElement('div'); el.className='switch'+(on?' on':''); el.id=id; el.addEventListener('click',()=>{el.classList.toggle('on');cb(el.classList.contains('on'));}); return el; };
+    const sel = (opts,val,cb) => { const s=document.createElement('select'); s.className='setting-sel'; opts.forEach(o=>{const op=document.createElement('option');op.value=o.v;op.textContent=o.l;if(o.v===val)op.selected=true;s.appendChild(op);}); s.addEventListener('change',()=>cb(s.value)); return s; };
+    const ti = (val,cb) => { const i=document.createElement('input'); i.className='setting-input'; i.value=val||''; i.addEventListener('change',()=>cb(i.value.trim())); return i; };
 
-    sp.appendChild(makeSectionTitle(i18n.t('settings.general')));
-    sp.appendChild(makeSettingRow(i18n.t('settings.language'), makeSelect(available.map(l => ({value:l,label:l.toUpperCase()})), cfg.language, async (v) => { await api.invoke('settings:set', 'language', v); await i18n.loadFor(v); applyI18n(); renderSettings(); })));
-    sp.appendChild(makeSettingRow(i18n.t('settings.searchEngine'), makeSelect([{value:'google',label:'Google'},{value:'bing',label:'Bing'},{value:'duckduckgo',label:'DuckDuckGo'}], cfg.searchEngine, (v) => api.invoke('settings:set', 'searchEngine', v))));
-    sp.appendChild(makeSettingRow(i18n.t('settings.homePage'), makeTextInput(cfg.homePage, (v) => api.invoke('settings:set', 'homePage', v))));
+    panelBody.appendChild(sec('General'));
+    panelBody.appendChild(row(i18n.t('settings.language'), sel(avail.map(l=>({v:l,l:l.toUpperCase()})), cfg.language, async v=>{ await api.invoke('settings:set','language',v); await i18n.loadFor(v); applyI18n(); renderSettings(); })));
+    panelBody.appendChild(row(i18n.t('settings.searchEngine'), sel([{v:'google',l:'Google'},{v:'bing',l:'Bing'},{v:'duckduckgo',l:'DuckDuckGo'}], cfg.searchEngine, v=>api.invoke('settings:set','searchEngine',v))));
 
-    sp.appendChild(makeSectionTitle(i18n.t('settings.adblocking')));
-    sp.appendChild(makeSettingRow(i18n.t('settings.adblockEnabled'), makeToggle('adblock-on', cfg.adblock.enabled, (v) => { cfg.adblock.enabled = v; api.invoke('settings:set', 'adblock', cfg.adblock); })));
-    const stats = await api.invoke('adblock:getStats').catch(() => null);
-    if (stats) sp.appendChild(makeSettingRow(i18n.t('settings.adblockStats'), '<span class="setting-hint">' + stats.blocked + '</span>'));
+    panelBody.appendChild(sec('Ad Blocking'));
+    panelBody.appendChild(row(i18n.t('settings.adblockEnabled'), sw('ablk', cfg.adblock.enabled, v=>{ cfg.adblock.enabled=v; api.invoke('settings:set','adblock',cfg.adblock); })));
+    const st = await api.invoke('adblock:getStats').catch(()=>null);
+    if (st) panelBody.appendChild(row(i18n.t('settings.adblockStats'), '<span style="color:var(--accent)">'+st.blocked+'</span>'));
 
-    sp.appendChild(makeSectionTitle(i18n.t('settings.downloads')));
-    sp.appendChild(makeSettingRow(i18n.t('settings.askWhereToSave'), makeToggle('ask-save', cfg.askWhereToSave, (v) => api.invoke('settings:set', 'askWhereToSave', v))));
-    sp.appendChild(makeSettingRow(i18n.t('settings.blockPopups'), makeToggle('block-popups', cfg.blockPopups, (v) => api.invoke('settings:set', 'blockPopups', v))));
+    panelBody.appendChild(sec('Downloads'));
+    panelBody.appendChild(row(i18n.t('settings.askWhereToSave'), sw('ask', cfg.askWhereToSave, v=>api.invoke('settings:set','askWhereToSave',v))));
 
-    sp.appendChild(makeSectionTitle(i18n.t('settings.clearData')));
-    const clearBtn = document.createElement('button');
-    clearBtn.className = 'panel-action-btn';
-    clearBtn.textContent = i18n.t('settings.clearHistory');
-    clearBtn.style.width = 'auto';
-    clearBtn.addEventListener('click', async () => { if (confirm(i18n.t('dialog.clearHistory'))) { await api.invoke('history:clear'); toast(i18n.t('history.title') + ' ✓'); } });
-    sp.appendChild(makeSettingRow(i18n.t('settings.clearData'), clearBtn));
+    panelBody.appendChild(sec('Clear Data'));
+    const b = document.createElement('button'); b.className='btn'; b.textContent=i18n.t('settings.clearHistory');
+    b.addEventListener('click', async()=>{ if(confirm(i18n.t('dialog.clearHistory'))){ await api.invoke('history:clear'); toast('History cleared'); }});
+    panelBody.appendChild(b);
   }
 
   async function renderSiteSettings() {
-    if (!activeUrl) { $('siteSettingsPanel').innerHTML = '<div class="empty-state">—</div>'; return; }
-    let host; try { host = new URL(activeUrl).hostname; } catch { $('siteSettingsPanel').innerHTML = '<div class="empty-state">—</div>'; return; }
-    let rule; try { rule = await api.invoke('site:getRule', host); } catch { rule = {}; }
+    if (!activeUrl) { empty('No site loaded'); return; }
+    let host; try { host = new URL(activeUrl).hostname; } catch { empty('—'); return; }
+    let rule; try { rule = await api.invoke('site:getRule',host); } catch { rule={}; }
     rule = rule || {};
-    const sp = $('siteSettingsPanel');
-    sp.innerHTML = '';
-    const hostEl = document.createElement('div');
-    hostEl.className = 'site-host';
-    hostEl.textContent = host;
-    sp.appendChild(hostEl);
-
-    const save = (h, r) => { api.invoke('site:setRule', h, r); toast(i18n.t('settings.confirm') + ' ✓'); };
-    for (const [key, ruleKey] of [['site.adblock','adblockEnabled'],['site.javascript','javascript'],['site.popups','popups']]) {
-      const current = rule[ruleKey] !== undefined ? rule[ruleKey] : null;
-      sp.appendChild(makeSettingRow(i18n.t(key), makeToggle(ruleKey, current === null ? false : !!current, (v) => { rule[ruleKey] = v; save(host, rule); }, current === null)));
+    panelBody.innerHTML = '<div class="mg-item" style="color:var(--accent)"><label style="font-family:monospace;font-size:12px">' + host + '</label></div>';
+    const sw = (id,on,cb) => { const el=document.createElement('div'); el.className='switch'+(on?' on':''); el.id=id; el.addEventListener('click',()=>{el.classList.toggle('on');cb(el.classList.contains('on'));}); return el; };
+    const row = (lbl, ctrl) => { const el=document.createElement('div'); el.className='mg-item'; el.innerHTML='<label>'+lbl+'</label>'; el.appendChild(ctrl); return el; };
+    const save = (h,r) => { api.invoke('site:setRule',h,r); toast('Saved'); };
+    for (const [lbl,rk] of [['Ad blocking','adblockEnabled'],['JavaScript','javascript'],['Pop-ups','popups']]) {
+      const cv = rule[rk] !== undefined ? rule[rk] : false;
+      panelBody.appendChild(row(lbl, sw(rk, cv, v=>{ rule[rk]=v; save(host,rule); })));
     }
-
-    sp.appendChild(makeSectionTitle(i18n.t('site.userAgent')));
-    const uaRow = document.createElement('div');
-    uaRow.className = 'setting-row';
-    uaRow.style.flexDirection = 'column';
-    uaRow.style.alignItems = 'stretch';
-    const uaInput = document.createElement('textarea');
-    uaInput.className = 'ua-input';
-    uaInput.value = rule.userAgent || '';
-    uaInput.placeholder = i18n.t('site.default');
-    uaInput.addEventListener('change', () => { const v = uaInput.value.trim(); if (v) rule.userAgent = v; else delete rule.userAgent; save(host, rule); });
-    uaRow.appendChild(uaInput);
-    sp.appendChild(uaRow);
-
-    sp.appendChild(makeSectionTitle(i18n.t('site.permissions')));
-    const perms = rule.permissions || {};
-    for (const perm of ['geolocation','notifications','media']) {
-      sp.appendChild(makeSettingRow(i18n.t('site.' + perm), makeToggle('perm-' + perm, perms[perm] || false, (v) => { rule.permissions = rule.permissions || {}; rule.permissions[perm] = v; save(host, rule); })));
-    }
+    panelBody.appendChild(document.createElement('div')).className='sec-title';
+    const uaRow = document.createElement('div'); uaRow.className='mg-item';
+    const uaIn = document.createElement('textarea'); uaIn.className='setting-input'; uaIn.value=rule.userAgent||''; uaIn.placeholder=i18n.t('site.default');
+    uaIn.style.width='100%'; uaIn.style.minHeight='56px';
+    uaIn.addEventListener('change',()=>{ const v=uaIn.value.trim(); if(v) rule.userAgent=v; else delete rule.userAgent; save(host,rule); });
+    uaRow.innerHTML='<label>User Agent</label>'; uaRow.appendChild(uaIn);
+    panelBody.appendChild(uaRow);
   }
 
-  function makeSectionTitle(text) { const el = document.createElement('div'); el.className = 'settings-section-title'; el.textContent = text; return el; }
-  function makeSettingRow(label, control) {
-    const wrap = document.createElement('div');
-    wrap.className = 'setting-row';
-    const lbl = document.createElement('div'); lbl.className = 'setting-label'; lbl.textContent = label;
-    const ctrl = document.createElement('div'); ctrl.className = 'setting-control';
-    if (typeof control === 'string') ctrl.innerHTML = control; else ctrl.appendChild(control);
-    wrap.appendChild(lbl); wrap.appendChild(ctrl); return wrap;
+  /* ── Side menu (Via grid) ──────────────────────────────────── */
+  const MENU_ITEMS = [
+    { label:'New Tab', action:'newTab', icon: IC.newTab },
+    { label:'Bookmarks', action:'bookmarks', icon: IC.bookmark },
+    { label:'History', action:'history', icon: IC.history },
+    { label:'Downloads', action:'downloads', icon: IC.downloads },
+    { label:'Settings', action:'settings', icon: IC.settings },
+    { label:'Refresh', action:'refresh', icon: IC.refresh },
+  ];
+  function buildMenu() {
+    sideMenuGrid.innerHTML = '';
+    MENU_ITEMS.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'sheet-item';
+      el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">' + item.icon + '</svg><span>' + item.label + '</span>';
+      el.addEventListener('click', () => handleMenu(item.action));
+      sideMenuGrid.appendChild(el);
+    });
   }
-  function makeSelect(opts, value, onChange) {
-    const sel = document.createElement('select');
-    for (const o of opts) { const op = document.createElement('option'); op.value = o.value; op.textContent = o.label; if (o.value === value) op.selected = true; sel.appendChild(op); }
-    sel.addEventListener('change', () => onChange(sel.value)); return sel;
+  function handleMenu(action) {
+    closeMenu();
+    if (action === 'newTab') api.invoke('tabs:create', {});
+    else if (action === 'bookmarks') openPanel('bookmarks', i18n.t('bookmarks.title'));
+    else if (action === 'history') openPanel('history', i18n.t('history.title'));
+    else if (action === 'downloads') openPanel('downloads', i18n.t('downloads.title'));
+    else if (action === 'settings') openPanel('settings', i18n.t('settings.title'));
+    else if (action === 'refresh') api.invoke('tabs:reload', activeId);
   }
-  function makeTextInput(value, onChange) {
-    const inp = document.createElement('input'); inp.type = 'text'; inp.value = value || '';
-    inp.addEventListener('change', () => onChange(inp.value.trim())); return inp;
-  }
-  function makeToggle(id, checked, onChange, isDefault) {
-    const label = document.createElement('label'); label.className = 'toggle';
-    const input = document.createElement('input'); input.type = 'checkbox'; input.id = id; input.checked = !!checked;
-    input.addEventListener('change', () => onChange(input.checked));
-    const track = document.createElement('span'); track.className = 'track';
-    label.appendChild(input); label.appendChild(track);
-    if (isDefault) { const hint = document.createElement('span'); hint.className = 'setting-hint'; hint.textContent = i18n.t('site.default'); const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;align-items:center;gap:8px'; wrap.appendChild(label); wrap.appendChild(hint); return wrap; }
-    return label;
-  }
+  function openMenu() { buildMenu(); menuBackdrop.classList.add('open'); sideMenu.classList.add('open'); }
+  function closeMenu() { menuBackdrop.classList.remove('open'); sideMenu.classList.remove('open'); }
 
-  /* ── Navigation helpers ─────────────────────────────────── */
+  /* ── Navigation ────────────────────────────────────────────── */
   async function navigate(url) { const id = await api.invoke('tabs:getActiveId'); await api.invoke('tabs:navigate', id, url); }
-  function searchUrl(q) { const eq = encodeURIComponent(q.trim()); return 'https://www.google.com/search?q=' + eq; }
-  function normalize(input) {
-    const s = input.trim(); if (!s) return '';
+  function normalize(v) {
+    const s = v.trim(); if (!s) return '';
     if (/^am:\/\//i.test(s)) return s;
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^about:/i.test(s) || /^data:/i.test(s)) return s;
-    if (/^localhost(\/|$)/i.test(s)) return 'http://' + s;
-    if (!/\s/.test(s) && /^[\w-]+(\.[\w-]+)+/.test(s) && /\./.test(s)) return 'https://' + s;
-    return searchUrl(s);
+    if (!/\s/.test(s) && /^[\w-]+(\.[\w-]+)+/.test(s)) return 'https://' + s;
+    return 'https://www.google.com/search?q=' + encodeURIComponent(s);
   }
+  function doNavigate(val) { const url = normalize(val); if (url) navigate(url); }
 
-  urlInput.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') { const url = normalize(urlInput.value); if (url) { urlInput.blur(); await navigate(url); } }
-  });
+  /* ── Events ────────────────────────────────────────────────── */
+  // Omnibox
+  urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') { doNavigate(urlInput.value); urlInput.blur(); } });
+  const homeInput = $('home-input');
+  homeInput.addEventListener('keydown', e => { if (e.key === 'Enter') { doNavigate(homeInput.value); homeInput.blur(); } });
 
-  /* ── FLOATING PILL — Spring Physics ─────────────────────── */
-  const pill = $('floatingPill');
-  const pillBody = $('pillBody');
-  const pillBubble = $('pillBubble');
-  let pillCollapsed = false;
-  let pillDragging = false;
-  let pillDragStartX = 0, pillDragStartY = 0;
-  let pillSpringX, pillSpringY;
-  let pillLastTime = 0;
-  let pillAnchorX = 0, pillAnchorY = 0;
-  let pillHasMoved = false;
+  // Bottom nav
+  $('navBack').addEventListener('click', () => api.invoke('tabs:goBack', activeId));
+  $('navForward').addEventListener('click', () => api.invoke('tabs:goForward', activeId));
+  $('navHome').addEventListener('click', () => { homeEl.classList.remove('hidden'); urlInput.focus(); });
+  $('navNewTab').addEventListener('click', () => api.invoke('tabs:create', {}));
+  $('navMenu').addEventListener('click', openMenu);
 
-  function pillInit() {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    pillAnchorX = vw / 2;
-    pillAnchorY = vh - 60;
-    pillSpringX = new Spring({ stiffness: 200, damping: 14, mass: 1 });
-    pillSpringY = new Spring({ stiffness: 200, damping: 14, mass: 1 });
-    pillSpringX.setPosition(pillAnchorX);
-    pillSpringX.setTarget(pillAnchorX);
-    pillSpringY.setPosition(pillAnchorY);
-    pillSpringY.setTarget(pillAnchorY);
-    requestAnimationFrame(pillTick);
-  }
+  // Menu footer shortcuts
+  $('menu-history').addEventListener('click', () => handleMenu('history'));
+  $('menu-bookmarks').addEventListener('click', () => handleMenu('bookmarks'));
+  $('menu-downloads').addEventListener('click', () => handleMenu('downloads'));
+  $('menu-settings').addEventListener('click', () => handleMenu('settings'));
 
-  function pillTick(now) {
-    if (!pillLastTime) pillLastTime = now;
-    const dt = Math.min((now - pillLastTime) / 1000, 0.064);
-    pillLastTime = now;
+  // Backdrop clicks
+  menuBackdrop.addEventListener('click', closeMenu);
+  panelBackdrop.addEventListener('click', closePanel);
+  $('panel-back').addEventListener('click', closePanel);
+  panelSearch.addEventListener('input', renderHistory);
 
-    pillSpringX.step(dt);
-    pillSpringY.step(dt);
+  // Omnibox action → site settings
+  $('omniboxAction').addEventListener('click', () => openPanel('siteSettings', i18n.t('site.title')));
 
-    const x = pillSpringX.position;
-    const y = pillSpringY.position;
-    pill.style.left = x + 'px';
-    pill.style.top = y + 'px';
-    pill.style.transform = 'translate(-50%, -50%)';
-
-    requestAnimationFrame(pillTick);
-  }
-
-  function pillSnapToAnchor() {
-    pillAnchorX = window.innerWidth / 2;
-    pillAnchorY = window.innerHeight - 60;
-    pillSpringX.setTarget(pillAnchorX);
-    pillSpringY.setTarget(pillAnchorY);
-  }
-
-  function pillSnapToEdge() {
-    const vw = window.innerWidth;
-    const x = pillSpringX.position;
-    pillAnchorX = x < vw / 2 ? 80 : vw - 80;
-    pillAnchorY = window.innerHeight - 60;
-    pillSpringX.setTarget(pillAnchorX);
-    pillSpringY.setTarget(pillAnchorY);
-  }
-
-  function pillSnapToTopCenter() {
-    pillAnchorX = window.innerWidth / 2;
-    pillAnchorY = 60;
-    pillSpringX.setTarget(pillAnchorX);
-    pillSpringY.setTarget(pillAnchorY);
-  }
-
-  // Pointer-drag with inertia
-  pill.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.pill-btn')) return; // Don't drag on button clicks
-    pillDragging = true;
-    pillHasMoved = false;
-    pillDragStartX = e.clientX;
-    pillDragStartY = e.clientY;
-    pill.setPointerCapture(e.pointerId);
-  });
-
-  pill.addEventListener('pointermove', (e) => {
-    if (!pillDragging) return;
-    const dx = e.clientX - pillDragStartX;
-    const dy = e.clientY - pillDragStartY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) pillHasMoved = true;
-    // Set position directly (no spring during drag)
-    pillSpringX.position = pillAnchorX + dx;
-    pillSpringY.position = pillAnchorY + dy;
-    pillSpringX._settled = true;
-    pillSpringY._settled = true;
-  });
-
-  pill.addEventListener('pointerup', (e) => {
-    if (!pillDragging) return;
-    pillDragging = false;
-    const dx = e.clientX - pillDragStartX;
-    const dy = e.clientY - pillDragStartY;
-    // Apply velocity as impulse for inertia
-    const velocityScale = 8;
-    pillSpringX.applyImpulse(dx * velocityScale);
-    pillSpringY.applyImpulse(dy * velocityScale);
-    // Settle to nearest edge
-    const vw = window.innerWidth;
-    if (pillHasMoved) {
-      if (Math.abs(pillAnchorX + dx - vw / 2) < vw * 0.3) {
-        pillSnapToAnchor();
-      } else {
-        pillSnapToEdge();
-      }
-    }
-  });
-
-  // Double-click to collapse/expand
-  pill.addEventListener('dblclick', (e) => {
-    if (e.target.closest('.pill-btn')) return;
-    togglePill();
-  });
-
-  function togglePill() {
-    pillCollapsed = !pillCollapsed;
-    if (pillCollapsed) {
-      pillBody.style.opacity = '0';
-      pillBody.style.transform = 'scale(0.5)';
-      pillBody.style.pointerEvents = 'none';
-      setTimeout(() => { pillBody.style.display = 'none'; }, 200);
-      pillBubble.style.display = 'flex';
-      setTimeout(() => { pillBubble.style.opacity = '1'; pillBubble.style.transform = 'scale(1)'; }, 10);
-    } else {
-      pillBubble.style.display = 'none';
-      pillBody.style.display = 'flex';
-      setTimeout(() => { pillBody.style.opacity = '1'; pillBody.style.transform = 'scale(1)'; }, 10);
-    }
-  }
-
-  // Click bubble to expand
-  pillBubble.addEventListener('click', () => {
-    if (pillCollapsed) togglePill();
-  });
-
-  // Pill button actions
-  document.querySelectorAll('.pill-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const action = btn.dataset.action;
-      if (action === 'back') api.invoke('tabs:goBack', activeId);
-      else if (action === 'forward') api.invoke('tabs:goForward', activeId);
-      else if (action === 'home') navigate('am://start');
-      else if (action === 'newTab') api.invoke('tabs:create', {});
-      else if (action === 'menu') openPanel(panels.settings);
-    });
-  });
-
-  // Window resize: update anchor
-  window.addEventListener('resize', () => {
-    if (!pillDragging) pillSnapToAnchor();
-  });
-
-  pillInit();
-
-  /* ── Wire sidebar & header events ──────────────────────── */
-  $('btnSettings').addEventListener('click', () => openPanel(panels.settings));
-  $('btnHistory').addEventListener('click', () => openPanel(panels.history));
-  $('btnBookmarks').addEventListener('click', () => openPanel(panels.bookmarks));
-  $('btnDownloads').addEventListener('click', () => openPanel(panels.downloads));
-  $('btnNewTab').addEventListener('click', () => api.invoke('tabs:create', {}));
-  $('panelHistoryClose').addEventListener('click', closePanels);
-  $('panelBookmarksClose').addEventListener('click', closePanels);
-  $('panelDownloadsClose').addEventListener('click', closePanels);
-  $('panelSettingsClose').addEventListener('click', closePanels);
-  $('panelSiteSettingsClose').addEventListener('click', closePanels);
-  $('historyClearBtn').addEventListener('click', async () => { if (confirm(i18n.t('dialog.clearHistory'))) { await api.invoke('history:clear'); renderHistory(); } });
-  $('bookmarksClearBtn').addEventListener('click', async () => { if (confirm(i18n.t('dialog.clearBookmarks'))) { await api.invoke('bookmarks:getAll').then((bms) => Promise.all(bms.map((b) => api.invoke('bookmarks:remove', b.id)))); renderBookmarks(); } });
-  $('downloadsClearBtn').addEventListener('click', async () => { await api.invoke('downloads:clear'); renderDownloads(); });
-  $('historySearch').addEventListener('input', renderHistory);
-  $('omniboxAction').addEventListener('click', () => openPanel(panels.siteSettings));
+  // Window controls
   $('btnMinimize').addEventListener('click', () => api.invoke('window:minimize'));
   $('btnMaximize').addEventListener('click', () => api.invoke('window:maximize'));
   $('btnClose').addEventListener('click', () => api.invoke('window:close'));
 
-  /* ── Toast ──────────────────────────────────────────────── */
-  let toastTimer = null;
-  function toast(msg) {
-    let el = document.querySelector('.toast');
-    if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
-    el.textContent = msg;
-    el.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
-  }
-
-  /* ── Keyboard shortcuts ─────────────────────────────────── */
-  document.addEventListener('keydown', (e) => {
-    const mods = e.ctrlKey || e.metaKey;
-    if (mods) {
-      if (e.key === 't') { e.preventDefault(); api.invoke('tabs:create', {}); }
-      if (e.key === 'l') { e.preventDefault(); urlInput.focus(); urlInput.select(); }
+  /* ── Keyboard shortcuts ─────────────────────────────────────── */
+  document.addEventListener('keydown', e => {
+    const m = e.ctrlKey || e.metaKey;
+    if (m) {
+      if (e.key === 't') { e.preventDefault(); api.invoke('tabs:create',{}); }
+      if (e.key === 'l') { e.preventDefault(); urlInput.focus(); urlInput.select(); homeInput && homeInput.focus(); }
       if (e.key === 'w') { e.preventDefault(); api.invoke('tabs:close', activeId); }
-      if (e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        api.invoke('tabs:getCurrentUrl').then(async ({ url }) => {
-          if (!url) return;
-          const existing = await api.invoke('bookmarks:getByUrl', url);
-          if (existing) { await api.invoke('bookmarks:remove', existing.id); toast(i18n.t('bookmarks.removed')); }
-          else { await api.invoke('bookmarks:add', { url, title: activeTitle }); toast(i18n.t('bookmarks.added')); }
-        });
-      }
     }
     if (e.alt && e.key === 'ArrowLeft') api.invoke('tabs:goBack', activeId);
     if (e.alt && e.key === 'ArrowRight') api.invoke('tabs:goForward', activeId);
   });
 
-  /* ── IPC events from main ───────────────────────────────── */
-  api.on('tabs:changed', (tabs, activeTabId, url, title) => {
-    allTabs = tabs;
-    activeId = activeTabId;
-    activeUrl = url || '';
-    activeTitle = title || '';
-    renderTabs();
-    syncAddressBar();
+  /* ── IPC events ────────────────────────────────────────────── */
+  api.on('tabs:changed', (tabs, aid, url, title) => {
+    allTabs = tabs; activeId = aid; activeUrl = url||''; activeTitle = title||'';
+    renderTabs(); syncBar();
   });
+  api.on('window:maximized', ok => { $('btnMaximize').textContent = ok ? '❐' : '□'; });
 
-  api.on('tabs:focusAddressBar', () => { urlInput.focus(); urlInput.select(); });
-  api.on('window:maximized', (isMax) => { $('btnMaximize').textContent = isMax ? '❐' : '□'; });
-  api.on('downloads:changed', () => { if (currentPanel === panels.downloads) renderDownloads(); });
+  /* ── Toast ──────────────────────────────────────────────────── */
+  let toastTimer = null;
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) { t = document.createElement('div'); t.id='toast'; document.body.appendChild(t); }
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+  window.__toast = toast;
 
-  /* ── Init ───────────────────────────────────────────────── */
+  /* ── Init ───────────────────────────────────────────────────── */
   (async () => {
     await i18n.init();
     applyI18n();
     try {
-      const active = await api.invoke('tabs:getAll');
-      const activeTab = await api.invoke('tabs:getActiveId');
-      if (Array.isArray(active)) { allTabs = active; activeId = activeTab; }
+      const tabs = await api.invoke('tabs:getAll');
+      const aid = await api.invoke('tabs:getActiveId');
+      if (Array.isArray(tabs)) { allTabs = tabs; activeId = aid; }
     } catch {}
-    renderTabs();
-    syncAddressBar();
+    renderTabs(); syncBar();
   })();
 })();

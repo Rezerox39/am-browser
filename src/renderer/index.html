@@ -6,128 +6,111 @@
   <title>AM</title>
   <link rel="stylesheet" href="styles/global.css">
 </head>
-<body class="am-shell">
+<body>
 
-  <!-- ── DRAG HEADER ──────────────────────────────────────────── -->
-  <header class="drag-region" id="dragRegion">
-    <div class="win-controls no-drag" id="winControls">
-      <button class="win-btn" id="btnMinimize" title="Minimize">─</button>
-      <button class="win-btn" id="btnMaximize" title="Maximize">□</button>
-      <button class="win-btn win-close" id="btnClose" title="Close">✕</button>
-    </div>
+  <!-- ── Drag region ─────────────────────────────────────────── -->
+  <div class="drag-region"></div>
 
-    <div class="omnibox-row no-drag">
-      <div class="omnibox-capsule" id="omnibox">
-        <span class="omnibox-lock" id="omniboxLock">🔒</span>
-        <input type="text" id="urlInput" class="url-input" placeholder="Search or type URL" data-i18n-placeholder="omnibox.placeholder" autocomplete="off" spellcheck="false">
-        <span class="omnibox-action" id="omniboxAction" title="Shield / Site Settings">⛊</span>
-      </div>
+  <!-- ── Window controls ─────────────────────────────────────── -->
+  <div class="win-controls">
+    <button class="win-btn" id="btnMinimize">─</button>
+    <button class="win-btn" id="btnMaximize">□</button>
+    <button class="win-btn win-close" id="btnClose">✕</button>
+  </div>
 
-      <button class="nav-btn" id="btnSettings" title="Settings" data-i18n="settings.title">⚙</button>
-    </div>
-  </header>
+  <!-- ── Tab strip ───────────────────────────────────────────── -->
+  <div class="tab-strip" id="tabStrip"></div>
 
-  <!-- ── FLOATING SIDEBAR ────────────────────────────────────── -->
-  <aside class="glass-sidebar no-drag" id="sidebar">
-    <div class="sidebar-top">
-      <div class="am-logo">AM</div>
-    </div>
-    <div class="tab-list" id="tabList"></div>
-    <button class="add-tab-btn" id="btnNewTab" title="New tab" data-i18n="tab.new">+</button>
-    <div class="sidebar-bottom">
-      <button class="sidebar-btn" id="btnHistory" title="History" data-i18n="history.title">⏱</button>
-      <button class="sidebar-btn" id="btnBookmarks" title="Bookmarks" data-i18n="bookmarks.title">★</button>
-      <button class="sidebar-btn" id="btnDownloads" title="Downloads" data-i18n="downloads.title">↓</button>
-    </div>
-  </aside>
-
-  <!-- ── FLOATING NAV PILL ────────────────────────────────────── -->
-  <nav class="floating-pill no-drag" id="floatingPill">
-    <div class="pill-body" id="pillBody">
-      <button class="pill-btn" id="pillBack" data-action="back" data-i18n="nav.back" title="Back">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <button class="pill-btn" id="pillForward" data-action="forward" data-i18n="nav.forward" title="Forward">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
-      <button class="pill-btn" id="pillHome" data-action="home" data-i18n="nav.home" title="Home">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      </button>
-      <div class="pill-divider"></div>
-      <button class="pill-btn pill-btn-accent" id="pillNewTab" data-action="newTab" data-i18n="tab.new" title="New Tab">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      </button>
-      <button class="pill-btn" id="pillMenu" data-action="menu" title="Menu">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+  <!-- ── Omnibox bar ─────────────────────────────────────────── -->
+  <div class="omnibox-bar">
+    <div class="omnibox-pill it" id="omnibox">
+      <svg id="omniboxLock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <input id="urlInput" class="url-input" placeholder="Search or enter URL" data-i18n-placeholder="omnibox.placeholder" autocomplete="off" spellcheck="false" style="-webkit-app-region:no-drag" />
+      <button class="omnibox-action" id="omniboxAction" title="Site Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       </button>
     </div>
-    <!-- Collapsed bubble state -->
-    <div class="pill-bubble" id="pillBubble" style="display:none;">
-      <span class="pill-bubble-glow"></span>
-      <span class="pill-bubble-label">AM</span>
-    </div>
+  </div>
+
+  <!-- ── Bottom nav pill (Via style) ─────────────────────────── -->
+  <nav class="bottom-nav no-drag" id="bottomNav">
+    <button class="nav-btn" id="navBack" title="Back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <button class="nav-btn" id="navForward" title="Forward">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <button class="nav-btn" id="navHome" title="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </button>
+    <button class="nav-btn accent" id="navNewTab" title="New Tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="nav-btn" id="navMenu" title="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+    </button>
   </nav>
 
-  <!-- ── OVERLAY PANELS ──────────────────────────────────────── -->
-  <div class="overlay-panel" id="panelHistory" style="display:none;">
-    <div class="panel-header">
-      <span data-i18n="history.title">History</span>
-      <button class="panel-close" id="panelHistoryClose">✕</button>
+  <!-- ── Menu backdrop ───────────────────────────────────────── -->
+  <div id="menu-backdrop" class="no-drag"></div>
+
+  <!-- ── Side menu (Via slide-in) ────────────────────────────── -->
+  <div id="side-menu" class="no-drag">
+    <div class="ph">
+      <span style="margin-right:10px;font-size:20px;color:var(--accent)">AM</span>
+      <b data-i18n="app.name">AM</b>
+      <span id="panel-spacer" style="flex:1"></span>
     </div>
-    <input type="text" class="panel-search" id="historySearch" data-i18n-placeholder="history.searchPlaceholder" placeholder="Search history...">
-    <div class="panel-body" id="historyList"></div>
-    <div class="panel-footer">
-      <button class="panel-action-btn" id="historyClearBtn" data-i18n="history.clearAll">Clear All</button>
+    <div id="side-menu-grid"></div>
+    <div id="side-menu-pagination"></div>
+    <div id="side-menu-footer">
+      <button id="menu-history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span data-i18n="history.title">History</span>
+      </button>
+      <button id="menu-bookmarks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        <span data-i18n="bookmarks.title">Bookmarks</span>
+      </button>
+      <button id="menu-downloads">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span data-i18n="downloads.title">Downloads</span>
+      </button>
+      <button id="menu-settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span data-i18n="settings.title">Settings</span>
+      </button>
     </div>
   </div>
 
-  <div class="overlay-panel" id="panelBookmarks" style="display:none;">
-    <div class="panel-header">
-      <span data-i18n="bookmarks.title">Bookmarks</span>
-      <button class="panel-close" id="panelBookmarksClose">✕</button>
+  <!-- ── Panel (bookmarks/history/search list — Via right slide) ──>
+  <div id="panel-backdrop" class="no-drag"></div>
+  <div id="panel" class="no-drag">
+    <div class="ph">
+      <button id="panel-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <b id="panel-title"></b>
+      <span id="panel-spacer"></span>
+      <input id="panel-search" class="search-input hidden" placeholder="Search..." data-i18n-placeholder="history.searchPlaceholder" style="width:140px;background:#0a0a0a;border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--fg-muted);font-size:12px" />
+      <button id="panel-action"></button>
     </div>
-    <div class="panel-body" id="bookmarksList"></div>
-    <div class="panel-footer">
-      <button class="panel-action-btn" id="bookmarksClearBtn" data-i18n="settings.clearBookmarks">Clear All</button>
+    <div id="panel-body"></div>
+  </div>
+
+  <!-- ── Home (empty-tab start page — Via style) ─────────────── -->
+  <div id="home" class="no-drag">
+    <img id="home-logo" src="../../assets/icon.png" alt="AM" draggable="false" />
+    <div id="home-search-wrap">
+      <div id="home-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input id="home-input" type="text" placeholder="Search or enter URL" data-i18n-placeholder="home.searchPlaceholder" autocomplete="off" spellcheck="false" />
+      </div>
     </div>
   </div>
 
-  <div class="overlay-panel" id="panelDownloads" style="display:none;">
-    <div class="panel-header">
-      <span data-i18n="downloads.title">Downloads</span>
-      <button class="panel-close" id="panelDownloadsClose">✕</button>
-    </div>
-    <div class="panel-body" id="downloadsList"></div>
-    <div class="panel-footer">
-      <button class="panel-action-btn" id="downloadsClearBtn" data-i18n="settings.clearDownloads">Clear All</button>
-    </div>
-  </div>
+  <div id="toast"></div>
 
-  <div class="overlay-panel" id="panelSettings" style="display:none;">
-    <div class="panel-header">
-      <span data-i18n="settings.title">Settings</span>
-      <button class="panel-close" id="panelSettingsClose">✕</button>
-    </div>
-    <div class="panel-body settings-body" id="settingsPanel"></div>
-  </div>
-
-  <div class="overlay-panel" id="panelSiteSettings" style="display:none;">
-    <div class="panel-header">
-      <span data-i18n="site.title">Site Settings</span>
-      <button class="panel-close" id="panelSiteSettingsClose">✕</button>
-    </div>
-    <div class="panel-body" id="siteSettingsPanel"></div>
-  </div>
-
-  <!-- ── AMOLED BLACK BACKGROUND ─────────────────────────────── -->
-  <div class="amoled-bg"></div>
-
-  <!-- Inline spring physics (renderer has no require()) -->
-  <script>
-  "use strict";
-  class Spring{constructor(o={}){this.stiffness=o.stiffness??180;this.damping=o.damping??12;this.mass=o.mass??1;this.precision=o.precision??0.5;this.position=o.position??0;this.velocity=o.velocity??0;this.target=o.target??o.position??0;this._settled=true}setPosition(v){this.position=v;this._settled=false}setTarget(v){if(Math.abs(this.target-v)>0.01){this.target=v;this._settled=false}}applyImpulse(v){this.velocity+=v;this._settled=false}step(dt){if(this._settled)return;dt=Math.min(dt,0.064);const d=this.position-this.target;const sf=-this.stiffness*d;const df=-this.damping*this.velocity;const a=(sf+df)/this.mass;this.velocity+=a*dt;this.position+=this.velocity*dt;if(Math.abs(this.velocity)<this.precision&&Math.abs(this.position-this.target)<this.precision){this.position=this.target;this.velocity=0;this._settled=true}}isSettled(){return this._settled}reset(){this.velocity=0;this._settled=true}}
-  class Spring2D{constructor(o={}){const s={stiffness:o.stiffness??180,damping:o.damping??12,mass:o.mass??1,precision:o.precision??0.5};this.x=new Spring({...s,position:o.x??0,target:o.targetX??o.x??0});this.y=new Spring({...s,position:o.y??0,target:o.targetY??o.y??0})}setPosition(x,y){this.x.setPosition(x);this.y.setPosition(y)}setTarget(x,y){this.x.setTarget(x);this.y.setTarget(y)}applyImpulse(vx,vy){this.x.applyImpulse(vx);this.y.applyImpulse(vy)}step(dt){this.x.step(dt);this.y.step(dt)}isSettled(){return this.x.isSettled()&&this.y.isSettled()}}
-  </script>
   <script src="app.js"></script>
 </body>
 </html>
