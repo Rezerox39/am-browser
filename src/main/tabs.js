@@ -1,6 +1,6 @@
 'use strict';
 
-const { WebContentsView, session } = require('electron');
+const { WebContentsView } = require('electron');
 const crypto = require('crypto');
 const config = require('./config');
 const logger = require('./logger');
@@ -28,30 +28,36 @@ function getAll() {
   }));
 }
 
-/* ── View management — always detach all, then attach active ── */
-function detachAllViews() {
+/* ── View management ───────────────────────────────────────── */
+function removeAllChildViews() {
   if (!chromeWin) return;
+  const children = chromeWin.contentView.children.slice();
+  for (const child of children) {
+    try { chromeWin.contentView.removeChildView(child); } catch {}
+  }
+  // Clear flags
   for (const t of tabs) {
-    if (t.view && t.view._isAttached) {
-      try { chromeWin.contentView.removeChildView(t.view); } catch {}
-      t.view._isAttached = false;
-    }
+    if (t.view) t.view._isAttached = false;
   }
 }
 
-function attachView(view) {
-  if (!chromeWin || !view || view._isAttached) return;
+function ensureViewAttached(view) {
+  if (!chromeWin || !view) return;
+  // Always remove first to reset state cleanly
+  try { chromeWin.contentView.removeChildView(view); } catch {}
+  view._isAttached = false;
+  // Now add
   try {
     chromeWin.contentView.addChildView(view);
     view._isAttached = true;
     updateViewBounds();
   } catch (e) {
-    logger.warn('tabs', 'Failed to attach view', { error: e.message });
+    logger.error('tabs', 'Failed to attach view', { error: e.message });
   }
 }
 
 function detachView(view) {
-  if (!chromeWin || !view || !view._isAttached) return;
+  if (!chromeWin || !view) return;
   try { chromeWin.contentView.removeChildView(view); } catch {}
   view._isAttached = false;
 }
@@ -59,14 +65,7 @@ function detachView(view) {
 function showActiveView() {
   const active = getActiveTab();
   if (!active || !active.view) return;
-  // Detach everyone else first
-  for (const t of tabs) {
-    if (t !== active && t.view && t.view._isAttached) {
-      detachView(t.view);
-    }
-  }
-  // Attach active
-  attachView(active.view);
+  ensureViewAttached(active.view);
 }
 
 function hideActiveView() {
@@ -125,13 +124,14 @@ function create(opts = {}) {
   });
   view.webContents.on('did-start-loading', () => { tab.loading = true; broadcast(); });
   view.webContents.on('did-stop-loading', () => { tab.loading = false; broadcast(); });
-  view.webContents.on('did-fail-load', (e, errorCode, errorDesc) => {
+  view.webContents.on('did-fail-load', (e, errorCode, errorDesc, validatedUrl) => {
     tab.loading = false;
     tab.title = 'Error — ' + (errorDesc || errorCode);
+    logger.warn('tabs', 'Page failed to load', { url: validatedUrl, errorCode, errorDesc });
     broadcast();
   });
 
-  // Popup handler: route to new tab
+  // Popup handler
   view.webContents.setWindowOpenHandler(({ url }) => {
     if (!url || url.startsWith('about:') || url.startsWith('javascript:')) return { action: 'deny' };
     create({ url });
@@ -178,6 +178,7 @@ function create(opts = {}) {
 
   setActive(tab.id);
   broadcast();
+  logger.info('tabs', 'Tab created', { id: tab.id, url: tab.url || '(blank)' });
   return tab;
 }
 
@@ -186,10 +187,9 @@ function setActive(tabId) {
   const next = tabs.find((t) => t.id === tabId);
   if (!next) return;
   activeTabId = tabId;
-  // Detach all views, then reattach the active one
-  detachAllViews();
+  removeAllChildViews();
   if (next.view && next.url) {
-    attachView(next.view);
+    ensureViewAttached(next.view);
   }
   broadcast();
 }
@@ -198,7 +198,6 @@ function close(tabId) {
   const idx = tabs.findIndex((t) => t.id === tabId);
   if (idx === -1) return;
   const tab = tabs[idx];
-  // Detach and destroy
   if (tab.view) {
     detachView(tab.view);
     if (tab.view.webContents && !tab.view.webContents.isDestroyed()) {
@@ -221,7 +220,10 @@ function close(tabId) {
 /* ── Navigation ────────────────────────────────────────────── */
 function navigate(tabId, url) {
   const tab = tabs.find((t) => t.id === tabId);
-  if (!tab || !tab.view) return;
+  if (!tab || !tab.view) {
+    logger.error('tabs', 'navigate: tab or view missing', { tabId, url });
+    return;
+  }
 
   // Apply site-specific settings
   let parsedHost = '';
@@ -236,18 +238,18 @@ function navigate(tabId, url) {
   tab.title = '';
   tab.loading = true;
 
-  // Ensure this tab's view is the one shown (detach others)
-  detachAllViews();
-  attachView(tab.view);
-  updateViewBounds();
+  // ENSURE this tab's view is attached — clean approach
+  ensureViewAttached(tab.view);
 
   broadcast();
+
+  logger.info('tabs', 'Navigating', { tabId, url });
 
   tab.view.webContents.loadURL(url).catch((err) => {
     tab.title = 'Error — ' + (err.message || 'Failed to load');
     tab.loading = false;
-    broadcast();
     logger.warn('tabs', 'Navigation failed', { url, error: err.message });
+    broadcast();
   });
 }
 
@@ -281,9 +283,15 @@ function goForward(tabId) {
   }
 }
 
-/* ── Public show/hide (called from renderer via IPC) ───────── */
-function showHome() { hideActiveView(); }
-function showContent() { showActiveView(); }
+/* ── Public show/hide ──────────────────────────────────────── */
+function showHome() {
+  hideActiveView();
+  logger.info('tabs', 'showHome: view detached');
+}
+function showContent() {
+  showActiveView();
+  logger.info('tabs', 'showContent: view attached');
+}
 
 /* ── Bounds & broadcast ────────────────────────────────────── */
 function updateViewBounds() {
@@ -301,7 +309,9 @@ function updateViewBounds() {
 
 function broadcast() {
   if (chromeWin && !chromeWin.webContents.isDestroyed()) {
-    chromeWin.webContents.send('tabs:changed', getAll(), activeTabId, getActiveTab()?.url || '', getActiveTab()?.title || '');
+    const all = getAll();
+    const active = getActiveTab();
+    chromeWin.webContents.send('tabs:changed', all, active?.id || null, active?.url || '', active?.title || '');
   }
 }
 

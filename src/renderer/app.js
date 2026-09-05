@@ -2,10 +2,11 @@
 (() => {
   const api = window.am;
   if (!api) {
-    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#000;color:#fff;font-family:sans-serif;font-size:16px">Preload unavailable</div>';
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#000;color:#fff;font-size:16px">Preload unavailable</div>';
     return;
   }
   const $ = id => document.getElementById(id);
+  const log = (msg, ...args) => console.log('[AM]', msg, ...args);
 
   /* ── i18n ─────────────────────────────────────────────────── */
   const i18n = { s: {} };
@@ -13,16 +14,15 @@
     try {
       const strings = await api.invoke('i18n:getStrings');
       if (strings && typeof strings === 'object') i18n.s = strings;
-    } catch (e) { console.warn('i18n load failed', e); }
+    } catch {}
     try {
       const cfg = await api.invoke('settings:get');
-      const lang = cfg.language || 'en';
-      if (lang !== 'en') {
-        await api.invoke('i18n:setLocale', lang);
+      if (cfg.language && cfg.language !== 'en') {
+        await api.invoke('i18n:setLocale', cfg.language);
         const localized = await api.invoke('i18n:getStrings');
         if (localized && typeof localized === 'object') i18n.s = localized;
       }
-    } catch (e) { console.warn('i18n lang failed', e); }
+    } catch {}
   }
   function t(k) { return i18n.s[k] || k; }
   function applyI18n() {
@@ -37,7 +37,7 @@
   /* ── State ────────────────────────────────────────────────── */
   let allTabs = [], activeId = '', activeUrl = '', activeTitle = '';
   let currentPanel = '';
-  let _showingHome = true; // tracks whether we're on home or content
+  let _showingHome = true;
 
   /* ── DOM refs ─────────────────────────────────────────────── */
   const tabStrip = $('tabStrip'), tabCount = $('tabCount');
@@ -60,7 +60,7 @@
   }
   async function safeInvoke(channel, ...args) {
     try { return await api.invoke(channel, ...args); }
-    catch (e) { console.error('IPC failed:', channel, e); return undefined; }
+    catch (e) { log('IPC FAIL:', channel, e); return undefined; }
   }
 
   /* ── Navigation ───────────────────────────────────────────── */
@@ -72,13 +72,51 @@
     if (!/\s/.test(s) && /^[\w-]+(\.[\w-]+)+/.test(s)) return 'https://' + s;
     return 'https://www.google.com/search?q=' + encodeURIComponent(s);
   }
+
   async function navigate(url) {
-    try {
-      // Use activeId directly if we know it, otherwise fetch
-      const id = activeId || await safeInvoke('tabs:getActiveId');
-      if (!id) { console.warn('navigate: no active tab'); return; }
-      await safeInvoke('tabs:navigate', id, url);
-    } catch (e) { console.error('navigate error', e); }
+    log('navigate called:', url);
+    const id = activeId || await safeInvoke('tabs:getActiveId');
+    log('activeId:', id);
+    if (!id) { log('ERROR: no active tab id'); toast('No active tab'); return; }
+    await safeInvoke('tabs:navigate', id, url);
+    log('navigate IPC sent');
+  }
+
+  /* ── View sync ────────────────────────────────────────────── */
+  async function syncView() {
+    const hasUrl = !!activeUrl;
+    log('syncView: activeUrl=', activeUrl, 'hasUrl=', hasUrl, '_showingHome=', _showingHome);
+    const wasHome = _showingHome;
+    _showingHome = !hasUrl;
+    if (hasUrl) {
+      homeEl.classList.add('hidden');
+      urlBar.style.display = 'flex';
+      urlBarText.textContent = activeTitle || activeUrl;
+      urlEditBar.classList.add('hidden');
+      if (wasHome) {
+        log('syncView: calling tabs:showContent');
+        await safeInvoke('tabs:showContent');
+      }
+    } else {
+      homeEl.classList.remove('hidden');
+      urlBar.style.display = 'none';
+      urlEditBar.classList.add('hidden');
+      if (!wasHome) {
+        log('syncView: calling tabs:showHome');
+        await safeInvoke('tabs:showHome');
+      }
+    }
+  }
+
+  function enterHome() {
+    log('enterHome');
+    _showingHome = true;
+    activeUrl = '';
+    homeEl.classList.remove('hidden');
+    urlBar.style.display = 'none';
+    urlEditBar.classList.add('hidden');
+    safeInvoke('tabs:showHome');
+    setTimeout(() => homeInput.focus(), 50);
   }
 
   /* ── Tab strip ────────────────────────────────────────────── */
@@ -93,51 +131,23 @@
         '<span class="tc-close">✕</span>';
       el.querySelector('.tc-close').addEventListener('click', e => {
         e.stopPropagation();
+        log('close tab:', tab.id);
         safeInvoke('tabs:close', tab.id);
       });
       el.addEventListener('click', () => {
-        if (tab.id !== activeId) safeInvoke('tabs:setActive', tab.id);
+        if (tab.id !== activeId) {
+          log('switch to tab:', tab.id);
+          safeInvoke('tabs:setActive', tab.id);
+        }
       });
       tabStrip.appendChild(el);
     }
-    // Add new-tab button at the end
     const addBtn = document.createElement('div');
     addBtn.className = 'tab-chip tc-add';
     addBtn.innerHTML = '<span class="tc-plus">+</span>';
-    addBtn.addEventListener('click', () => safeInvoke('tabs:create', {}));
+    addBtn.addEventListener('click', () => { log('new tab (+)'); safeInvoke('tabs:create', {}); });
     tabStrip.appendChild(addBtn);
     if (tabCount) tabCount.textContent = allTabs.length || 1;
-  }
-
-  /* ── View sync — only sends IPC when home/content state changes ── */
-  async function syncView() {
-    const hasUrl = !!activeUrl;
-    const wasHome = _showingHome;
-    _showingHome = !hasUrl;
-
-    if (hasUrl) {
-      homeEl.classList.add('hidden');
-      urlBar.style.display = 'flex';
-      urlBarText.textContent = activeTitle || activeUrl;
-      urlEditBar.classList.add('hidden');
-      // Tell main to show the WebContentsView (only on transition)
-      if (wasHome) await safeInvoke('tabs:showContent');
-    } else {
-      homeEl.classList.remove('hidden');
-      urlBar.style.display = 'none';
-      urlEditBar.classList.add('hidden');
-      // Tell main to hide the WebContentsView (only on transition)
-      if (!wasHome) await safeInvoke('tabs:showHome');
-    }
-  }
-
-  function enterHome() {
-    _showingHome = true;
-    homeEl.classList.remove('hidden');
-    urlBar.style.display = 'none';
-    urlEditBar.classList.add('hidden');
-    safeInvoke('tabs:showHome');
-    setTimeout(() => homeInput.focus(), 50);
   }
 
   /* ── URL edit bar ─────────────────────────────────────────── */
@@ -171,11 +181,25 @@
       const val = homeInput.value.trim();
       if (!val) return;
       const url = normalize(val);
-      if (url) {
-        homeInput.value = '';
-        homeInput.blur();
-        navigate(url);
-      }
+      log('home search Enter:', val, '→', url);
+      if (!url) return;
+      homeInput.value = '';
+      homeInput.blur();
+      // Navigate — fire and forget, but also force showContent after a brief delay
+      // as a safety net in case the broadcast cycle doesn't trigger syncView
+      navigate(url).then(() => {
+        log('navigate resolved');
+        // Force sync after navigation completes
+        activeUrl = url;
+        _showingHome = false;
+        homeEl.classList.add('hidden');
+        urlBar.style.display = 'flex';
+        urlBarText.textContent = url;
+        safeInvoke('tabs:showContent');
+      }).catch(err => {
+        log('navigate FAILED:', err);
+        toast('Navigation failed');
+      });
     }
     if (e.key === 'Escape') homeInput.blur();
     e.stopPropagation();
@@ -241,49 +265,24 @@
     if (currentPanel === 'siteSettings') return renderSiteSettings();
   }
   function empty(msg) { panelBody.innerHTML = '<div class="empty-state">' + msg + '</div>'; }
-
   async function renderHistory() {
     const q = panelSearch.value.trim();
-    let items;
-    try {
-      items = q ? await safeInvoke('history:search', q, 50) : await safeInvoke('history:getRecent', 100);
-      if (!Array.isArray(items)) items = [];
-    } catch { return empty('Error loading history'); }
+    let items; try { items = q ? await safeInvoke('history:search', q, 50) : await safeInvoke('history:getRecent', 100); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
     if (!items.length) return empty(t('history.empty'));
     panelBody.innerHTML = '';
-    for (const it of items) {
-      const d = document.createElement('div'); d.className = 'pi';
-      d.innerHTML = '<div class="pi-title">' + (it.title || it.url) + '</div><div class="pi-url">' + it.url + '</div>';
-      d.addEventListener('click', () => { navigate(it.url); closePanel(); });
-      panelBody.appendChild(d);
-    }
+    for (const it of items) { const d = document.createElement('div'); d.className = 'pi'; d.innerHTML = '<div class="pi-title">' + (it.title || it.url) + '</div><div class="pi-url">' + it.url + '</div>'; d.addEventListener('click', () => { navigate(it.url); closePanel(); }); panelBody.appendChild(d); }
   }
   async function renderBookmarks() {
-    let items;
-    try { items = await safeInvoke('bookmarks:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
+    let items; try { items = await safeInvoke('bookmarks:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
     if (!items.length) return empty(t('bookmarks.empty'));
     panelBody.innerHTML = '';
-    for (const bm of items) {
-      const d = document.createElement('div'); d.className = 'pi';
-      d.innerHTML = '<div class="pi-title">' + (bm.title || bm.url) + '</div><div class="pi-url">' + bm.url + '</div><span class="pi-del">✕</span>';
-      d.addEventListener('click', () => { navigate(bm.url); closePanel(); });
-      d.querySelector('.pi-del').addEventListener('click', async e => { e.stopPropagation(); await safeInvoke('bookmarks:remove', bm.id); renderBookmarks(); });
-      panelBody.appendChild(d);
-    }
+    for (const bm of items) { const d = document.createElement('div'); d.className = 'pi'; d.innerHTML = '<div class="pi-title">' + (bm.title || bm.url) + '</div><div class="pi-url">' + bm.url + '</div><span class="pi-del">✕</span>'; d.addEventListener('click', () => { navigate(bm.url); closePanel(); }); d.querySelector('.pi-del').addEventListener('click', async e => { e.stopPropagation(); await safeInvoke('bookmarks:remove', bm.id); renderBookmarks(); }); panelBody.appendChild(d); }
   }
   async function renderDownloads() {
-    let items;
-    try { items = await safeInvoke('downloads:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
+    let items; try { items = await safeInvoke('downloads:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
     if (!items.length) return empty(t('downloads.empty'));
     panelBody.innerHTML = '';
-    for (const dl of items) {
-      const st = dl.state === 'progressing' ? t('downloads.downloading') : dl.state === 'failed' ? t('downloads.failed') : dl.state === 'cancelled' ? t('downloads.cancelled') : t('downloads.complete');
-      const d = document.createElement('div'); d.className = 'dl-item';
-      d.innerHTML = '<div class="dl-name">' + dl.filename + '</div><div class="dl-meta">' + st + ' · ' + fmtBytes(dl.receivedBytes || dl.totalBytes) + '</div><div class="dl-actions"><button>' + t('downloads.open') + '</button><button>' + t('downloads.remove') + '</button></div>';
-      d.querySelectorAll('button')[0].addEventListener('click', () => { if (dl.state === 'complete' && dl.savePath) safeInvoke('downloads:openFile', dl.savePath); });
-      d.querySelectorAll('button')[1].addEventListener('click', async () => { await safeInvoke('downloads:remove', dl.id); renderDownloads(); });
-      panelBody.appendChild(d);
-    }
+    for (const dl of items) { const st = dl.state === 'progressing' ? 'Downloading...' : dl.state === 'failed' ? 'Failed' : dl.state === 'cancelled' ? 'Cancelled' : 'Complete'; const d = document.createElement('div'); d.className = 'dl-item'; d.innerHTML = '<div class="dl-name">' + dl.filename + '</div><div class="dl-meta">' + st + ' · ' + fmtBytes(dl.receivedBytes || dl.totalBytes) + '</div><div class="dl-actions"><button>Open</button><button>Remove</button></div>'; d.querySelectorAll('button')[0].addEventListener('click', () => { if (dl.state === 'complete' && dl.savePath) safeInvoke('downloads:openFile', dl.savePath); }); d.querySelectorAll('button')[1].addEventListener('click', async () => { await safeInvoke('downloads:remove', dl.id); renderDownloads(); }); panelBody.appendChild(d); }
   }
   async function renderSettings() {
     const cfg = await safeInvoke('settings:get');
@@ -291,29 +290,23 @@
     panelBody.innerHTML = '';
     const sec = title => { const el = document.createElement('div'); el.className = 'sec-title'; el.textContent = title; return el; };
     const item = (label, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + label + '</label>'; el.appendChild(ctrl); return el; };
-
-    panelBody.appendChild(sec(t('settings.language')));
+    panelBody.appendChild(sec('Language'));
     const sel = document.createElement('select'); sel.className = 'setting-sel';
     (avail || []).forEach(loc => { const o = document.createElement('option'); o.value = loc; o.textContent = loc.toUpperCase(); if (loc === cfg.language) o.selected = true; sel.appendChild(o); });
     sel.addEventListener('change', async () => { await safeInvoke('settings:set', 'language', sel.value); await initI18n(); applyI18n(); toast('Language: ' + sel.value); });
-    panelBody.appendChild(item(t('settings.language'), sel));
-
-    panelBody.appendChild(sec(t('settings.searchEngine')));
-    const engines = { google: 'Google', duckduckgo: 'DuckDuckGo', bing: 'Bing' };
+    panelBody.appendChild(item('Language', sel));
+    panelBody.appendChild(sec('Search Engine'));
     const engSel = document.createElement('select'); engSel.className = 'setting-sel';
-    Object.entries(engines).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.searchEngine) o.selected = true; engSel.appendChild(o); });
-    engSel.addEventListener('change', () => { safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search: ' + engines[engSel.value]); });
-    panelBody.appendChild(item(t('settings.searchEngine'), engSel));
-
-    panelBody.appendChild(sec(t('settings.adblocking')));
-    const abSw = document.createElement('div');
-    abSw.className = 'switch' + (cfg.adblock?.enabled ? ' on' : '');
-    abSw.addEventListener('click', () => { abSw.classList.toggle('on'); safeInvoke('settings:set', 'adblock', { ...cfg.adblock, enabled: abSw.classList.contains('on') }); toast(abSw.classList.contains('on') ? 'Ad blocking: ON' : 'Ad blocking: OFF'); });
-    panelBody.appendChild(item(t('settings.adblockEnabled'), abSw));
-
-    panelBody.appendChild(sec(t('settings.clearData')));
-    const clrBtn = document.createElement('button'); clrBtn.className = 'btn'; clrBtn.textContent = t('settings.clearHistory');
-    clrBtn.addEventListener('click', async () => { if (confirm(t('dialog.clearHistory'))) { await safeInvoke('history:clear'); toast('History cleared'); } });
+    [{k:'google',v:'Google'},{k:'duckduckgo',v:'DuckDuckGo'},{k:'bing',v:'Bing'}].forEach(({k,v}) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.searchEngine) o.selected = true; engSel.appendChild(o); });
+    engSel.addEventListener('change', () => { safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search: ' + engSel.value); });
+    panelBody.appendChild(item('Search Engine', engSel));
+    panelBody.appendChild(sec('Ad Blocking'));
+    const abSw = document.createElement('div'); abSw.className = 'switch' + (cfg.adblock?.enabled ? ' on' : '');
+    abSw.addEventListener('click', () => { abSw.classList.toggle('on'); safeInvoke('settings:set', 'adblock', { ...cfg.adblock, enabled: abSw.classList.contains('on') }); toast(abSw.classList.contains('on') ? 'Adblock ON' : 'Adblock OFF'); });
+    panelBody.appendChild(item('Enable Ad Blocking', abSw));
+    panelBody.appendChild(sec('Clear Data'));
+    const clrBtn = document.createElement('button'); clrBtn.className = 'btn'; clrBtn.textContent = 'Clear History';
+    clrBtn.addEventListener('click', async () => { if (confirm('Clear all history?')) { await safeInvoke('history:clear'); toast('History cleared'); } });
     panelBody.appendChild(clrBtn);
   }
   async function renderSiteSettings() {
@@ -326,7 +319,7 @@
     panelBody.appendChild(hostEl);
     const sw = (on, cb) => { const el = document.createElement('div'); el.className = 'switch' + (on ? ' on' : ''); el.addEventListener('click', () => { el.classList.toggle('on'); cb(el.classList.contains('on')); }); return el; };
     const row = (lbl, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + lbl + '</label>'; el.appendChild(ctrl); return el; };
-    for (const [lbl, rk] of [[t('site.adblock'), 'adblockEnabled'], [t('site.javascript'), 'javascript'], [t('site.popups'), 'popups']]) {
+    for (const [lbl, rk] of [['Ad Blocking', 'adblockEnabled'], ['JavaScript', 'javascript'], ['Pop-ups', 'popups']]) {
       panelBody.appendChild(row(lbl, sw(rule[rk] || false, v => { rule[rk] = v; safeInvoke('site:setRule', host, rule); toast('Saved'); })));
     }
   }
@@ -335,37 +328,32 @@
   $('navBack').addEventListener('click', async () => {
     const id = activeId || await safeInvoke('tabs:getActiveId');
     if (!id) return;
-    try { await safeInvoke('tabs:goBack', id); } catch (e) { console.error('goBack', e); toast('Cannot go back'); }
+    safeInvoke('tabs:goBack', id);
   });
   $('navForward').addEventListener('click', async () => {
     const id = activeId || await safeInvoke('tabs:getActiveId');
     if (!id) return;
-    try { await safeInvoke('tabs:goForward', id); } catch (e) { console.error('goForward', e); toast('Cannot go forward'); }
+    safeInvoke('tabs:goForward', id);
   });
   $('navHome').addEventListener('click', () => enterHome());
-  // Tab button: ALWAYS creates a new tab (Chrome behavior)
-  $('navTabs').addEventListener('click', () => safeInvoke('tabs:create', {}));
+  $('navTabs').addEventListener('click', () => { log('navTabs: create new tab'); safeInvoke('tabs:create', {}); });
   $('navMenu').addEventListener('click', openMenu);
 
-  // Menu footer
   $('menu-history').addEventListener('click', () => handleMenu('History'));
   $('menu-bookmarks').addEventListener('click', () => handleMenu('Bookmarks'));
   $('menu-downloads').addEventListener('click', () => handleMenu('Downloads'));
   $('menu-settings').addEventListener('click', () => handleMenu('Settings'));
   $('menu-close-btn').addEventListener('click', closeMenu);
 
-  // Backdrops
   menuBackdrop.addEventListener('click', closeMenu);
   panelBackdrop.addEventListener('click', closePanel);
   $('panel-back').addEventListener('click', closePanel);
   panelSearch.addEventListener('input', loadPanel);
 
-  // macOS window controls
   $('btnClose').addEventListener('click', async () => { try { await safeInvoke('window:close'); } catch {} });
   $('btnMinimize').addEventListener('click', async () => { try { await safeInvoke('window:minimize'); } catch {} });
   $('btnMaximize').addEventListener('click', async () => { try { await safeInvoke('window:maximize'); } catch {} });
 
-  // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     const m = e.ctrlKey || e.metaKey;
     if (m && e.key === 't') { e.preventDefault(); safeInvoke('tabs:create', {}); }
@@ -374,8 +362,9 @@
     if (e.key === 'Escape') { closeMenu(); closePanel(); }
   });
 
-  /* ── IPC from main process ────────────────────────────────── */
+  /* ── IPC from main ────────────────────────────────────────── */
   api.on('tabs:changed', (tabs, aid, url, title) => {
+    log('tabs:changed:', aid, url);
     allTabs = Array.isArray(tabs) ? tabs : [];
     activeId = aid || '';
     activeUrl = url || '';
@@ -386,32 +375,30 @@
   api.on('tabs:focusAddressBar', () => openUrlEdit());
   api.on('window:maximized', isMax => {
     const dot = $('btnMaximize');
-    if (dot) dot.title = isMax ? t('window.restore') : t('window.maximize');
+    if (dot) dot.title = isMax ? 'Restore' : 'Maximize';
   });
 
   /* ── Init ─────────────────────────────────────────────────── */
   (async () => {
+    log('Init starting');
     await initI18n();
     applyI18n();
 
-    // Fetch initial tab state
     try {
       const tabs = await safeInvoke('tabs:getAll');
       const aid = await safeInvoke('tabs:getActiveId');
       if (Array.isArray(tabs)) allTabs = tabs;
       if (aid) activeId = aid;
-    } catch (e) { console.error('init tabs error', e); }
+      log('Init tabs:', allTabs.length, 'activeId:', activeId);
+    } catch (e) { log('init error:', e); }
 
     renderTabs();
-
-    // Start on home screen
     _showingHome = true;
     homeEl.classList.remove('hidden');
     urlBar.style.display = 'none';
     urlEditBar.classList.add('hidden');
-    // Tell main to hide the view
     safeInvoke('tabs:showHome');
-
     setTimeout(() => homeInput.focus(), 100);
+    log('Init complete');
   })();
 })();
