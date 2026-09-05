@@ -69,7 +69,7 @@ function create() {
       cfg.windowState.maximized = mainWindow.isMaximized();
       config.scheduleSave();
       const tabs = require('./tabs');
-      tabs.updateViewBounds();
+      tabs.repositionActiveTab();
     } catch {}
   });
   mainWindow.on('move', () => {
@@ -78,6 +78,7 @@ function create() {
       const cfg = config.get();
       cfg.windowState.x = x;
       cfg.windowState.y = y;
+      try { require('./tabs').repositionActiveTab(); } catch {}
       config.scheduleSave();
     } catch {}
   });
