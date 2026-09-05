@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 let errors = 0;
@@ -21,7 +21,7 @@ findJS(path.join(ROOT, 'src'));
 findJS(path.join(ROOT, 'scripts'));
 for (const f of jsFiles) {
   try {
-    execSync('node --check ' + JSON.stringify(f), { stdio: 'pipe' });
+    execFileSync('node', ['--check', f], { stdio: 'pipe' });
   } catch (e) {
     console.error('  X ' + path.relative(ROOT, f));
     errors++;
