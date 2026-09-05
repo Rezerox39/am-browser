@@ -36,15 +36,18 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.am.browser');
 }
 
-// Security hardening
-security.harden();
-
-// Initialize services
-downloadsManager.init();
-adblockService.init();
-
-// Create window when ready
+// Everything that touches session.defaultSession MUST run after app is ready.
 app.whenReady().then(() => {
+  // Security hardening (accesses session.defaultSession)
+  security.harden();
+
+  // Initialize download manager (accesses session.defaultSession)
+  downloadsManager.init();
+
+  // Initialize ad-block (accesses session.defaultSession)
+  adblockService.init();
+
+  // Create main window
   const win = windowManager.create();
   downloadsManager.setWindow(win);
   ipcHandler.register(win);
