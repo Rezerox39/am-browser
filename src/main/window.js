@@ -11,19 +11,12 @@ function create() {
   const cfg = config.get();
   const ws = cfg.windowState || {};
 
-  // Determine safe dimensions (ensure on-screen)
-  let x = ws.x, y = ws.y;
+  // Safe on-screen placement
   const w = Math.min(ws.width || 1280, 3840);
   const h = Math.min(ws.height || 800, 2160);
   const primary = screen.getPrimaryDisplay().workAreaSize;
-  if (x !== undefined && y !== undefined) {
-    // Clamp to screen
-    x = Math.max(0, Math.min(x, primary.width - 200));
-    y = Math.max(0, Math.min(y, primary.height - 200));
-  } else {
-    x = Math.floor((primary.width - w) / 2);
-    y = Math.floor((primary.height - h) / 2);
-  }
+  const x = Math.max(0, Math.min(ws.x ?? Math.floor((primary.width - w) / 2), primary.width - 200));
+  const y = Math.max(0, Math.min(ws.y ?? Math.floor((primary.height - h) / 2), primary.height - 200));
 
   const baseOpts = {
     width: w,
@@ -42,30 +35,23 @@ function create() {
     },
   };
 
-  // Try translucent window first (Windows 11 Mica/Acrylic)
+  // TRANSPARENCY IS OFF BY DEFAULT — solid black is guaranteed to render.
+  // User can opt in via settings (transparency: true).
+  const wantTransparency = !!cfg.transparency || process.env.AM_TRANSPARENT === '1';
   let usedTransparency = false;
-  try {
-    mainWindow = new BrowserWindow({
-      ...baseOpts,
-      transparent: true,
-      backgroundMaterial: 'acrylic',
-    });
-    usedTransparency = true;
-    logger.info('window', 'Created translucent window');
-  } catch (e1) {
-    logger.warn('window', 'Translucent window failed, falling back', { error: e1.message });
+
+  if (wantTransparency) {
     try {
-      mainWindow = new BrowserWindow({
-        ...baseOpts,
-        transparent: true,
-      });
+      mainWindow = new BrowserWindow({ ...baseOpts, transparent: true, backgroundMaterial: 'acrylic' });
       usedTransparency = true;
-      logger.info('window', 'Created transparent-only window');
-    } catch (e2) {
-      logger.warn('window', 'Transparent window failed too, using solid', { error: e2.message });
-      mainWindow = new BrowserWindow(baseOpts);
-      logger.info('window', 'Created solid window');
+      logger.info('window', 'Created translucent window');
+    } catch (e1) {
+      logger.warn('window', 'Translucent window failed, falling back to solid', { error: e1.message });
     }
+  }
+  if (!mainWindow) {
+    mainWindow = new BrowserWindow(baseOpts);
+    logger.info('window', 'Created solid black window (show = false, shown on ready-to-show)');
   }
 
   // Restore maximized state
@@ -86,7 +72,6 @@ function create() {
       tabs.updateViewBounds();
     } catch {}
   });
-
   mainWindow.on('move', () => {
     try {
       const [x, y] = mainWindow.getPosition();
@@ -96,65 +81,58 @@ function create() {
       config.scheduleSave();
     } catch {}
   });
-
   mainWindow.on('maximize', () => {
-    try {
-      config.update((d) => { d.windowState.maximized = true; });
-      mainWindow.webContents.send('window:maximized', true);
-    } catch {}
+    try { config.update((d) => { d.windowState.maximized = true; }); mainWindow.webContents.send('window:maximized', true); } catch {}
   });
-
   mainWindow.on('unmaximize', () => {
-    try {
-      config.update((d) => { d.windowState.maximized = false; });
-      mainWindow.webContents.send('window:maximized', false);
-    } catch {}
+    try { config.update((d) => { d.windowState.maximized = false; }); mainWindow.webContents.send('window:maximized', false); } catch {}
   });
 
-  // Log renderer errors
+  // Surface renderer errors in the log
   mainWindow.webContents.on('console-message', (e, level, msg) => {
     if (level >= 2) logger.warn('renderer', msg);
   });
 
-  // Load the chrome renderer
+  // Load chrome
   const htmlPath = path.join(__dirname, '..', 'renderer', 'index.html');
   mainWindow.loadFile(htmlPath).then(() => {
-    logger.info('window', 'Chrome loaded successfully');
+    logger.info('window', 'Chrome loaded');
   }).catch((err) => {
     logger.error('window', 'Failed to load chrome', { error: err.message, path: htmlPath });
   });
 
-  // Show when ready (with timeout fallback)
+  // Show on ready
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
-    logger.info('window', 'Main window shown');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      logger.info('window', 'Main window shown');
+    }
   });
 
-  // Fallback: if ready-to-show never fires (transparency issue), show after 3s
+  // Show immediately (no waiting) so the window is never silently missing.
+  // paintWhenInitiallyHidden lets us load while hidden without GPU weirdness.
+  mainWindow.on('show', () => logger.info('window', 'Window show event fired'));
+
+  // Fallback: force-show after 2.5s no matter what
   setTimeout(() => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.show();
       mainWindow.focus();
-      logger.warn('window', 'Fallback show — ready-to-show did not fire');
+      logger.warn('window', 'Fallback: forced show after 2.5s');
     }
-  }, 3000);
+  }, 2500);
 
-  // Unrecoverable error handler
   mainWindow.on('render-process-gone', (e, details) => {
     logger.error('window', 'Render process crashed', { reason: details.reason });
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('closed', () => { mainWindow = null; });
 
   return mainWindow;
 }
 
-function getWindow() {
-  return mainWindow;
-}
+function getWindow() { return mainWindow; }
 
 function focus() {
   if (mainWindow && !mainWindow.isDestroyed()) {
