@@ -1,14 +1,10 @@
-
 'use strict';
 
 const { WebContentsView, session } = require('electron');
-const { v4: uuidv4 } = require('crypto');
+const crypto = require('crypto');
 const config = require('./config');
 const logger = require('./logger');
 const history = require('./history');
-const bookmarks = require('./bookmarks');
-
-const crypto = require('crypto');
 
 function genId() {
   return 'tab_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
@@ -17,7 +13,8 @@ function genId() {
 let tabs = [];
 let activeTabId = null;
 let chromeWin = null;
-const viewBounds = { x: 260, y: 70, width: 1000, height: 700 };
+const viewBounds = { x: 12, y: 86, width: 1000, height: 700 };
+let _viewAttached = false;
 
 function setChromeWindow(win) {
   chromeWin = win;
@@ -49,8 +46,6 @@ function create(opts = {}) {
   };
   tabs.push(tab);
 
-  // Create WebContentsView for this tab
-  const ses = session.defaultSession;
   const view = new WebContentsView({
     webPreferences: {
       contextIsolation: true,
@@ -69,7 +64,7 @@ function create(opts = {}) {
   if (rule.javascript === false) view.webContents.setJavaScriptEnabled(false);
   if (rule.userAgent) view.webContents.setUserAgent(rule.userAgent);
 
-  // Handle navigation events
+  // Navigation events
   view.webContents.on('did-navigate', (e, url) => {
     tab.url = url;
     history.add({ url, title: tab.title || url });
@@ -97,7 +92,7 @@ function create(opts = {}) {
   });
   view.webContents.on('did-fail-load', (e, errorCode, errorDesc, validatedUrl) => {
     tab.loading = false;
-    tab.title = 'Error';
+    tab.title = 'Error — ' + (errorDesc || errorCode);
     broadcast();
   });
 
@@ -115,9 +110,6 @@ function create(opts = {}) {
     if (input.key === 't') {
       event.preventDefault();
       create();
-      setActive(tab.id); // will be set to the new tab
-      const newTab = tabs[tabs.length - 1];
-      setActive(newTab.id);
     } else if (input.key === 'w') {
       event.preventDefault();
       close(tab.id);
@@ -131,6 +123,7 @@ function create(opts = {}) {
       reload(tab.id);
     } else if (input.key === 'd') {
       event.preventDefault();
+      const bookmarks = require('./bookmarks');
       const existing = bookmarks.getByUrl(tab.url);
       if (existing) {
         bookmarks.remove(existing.id);
@@ -138,27 +131,58 @@ function create(opts = {}) {
         bookmarks.add({ url: tab.url, title: tab.title, favicon: tab.favicon });
       }
       broadcast();
-      if (chromeWin && !chromeWin.webContents.isDestroyed()) {
-        chromeWin.webContents.send('tabs:bookmarkToggled', { url: tab.url, bookmarked: !existing });
-      }
     }
   });
 
   tab.view = view;
 
-  // Load URL or leave empty for new tab
   if (tab.url) {
     view.webContents.loadURL(tab.url).catch((err) => {
       logger.warn('tabs', 'Failed to load URL', { url: tab.url, error: err.message });
     });
+    // If navigating to a URL, attach the view
+    attachView(view);
   } else {
     tab.title = 'New Tab';
+    // No URL = new blank tab, don't show the view yet
+    // (home screen will be shown instead)
   }
 
   setActive(tab.id);
-  updateViewBounds();
   broadcast();
   return tab;
+}
+
+function attachView(view) {
+  if (!chromeWin || !view) return;
+  if (_viewAttached) return;
+  try {
+    chromeWin.contentView.addChildView(view);
+    _viewAttached = true;
+    updateViewBounds();
+  } catch (e) {
+    logger.warn('tabs', 'Failed to attach view', { error: e.message });
+  }
+}
+
+function detachView() {
+  if (!chromeWin || !_viewAttached) return;
+  const active = getActiveTab();
+  if (active && active.view) {
+    try { chromeWin.contentView.removeChildView(active.view); } catch {}
+  }
+  _viewAttached = false;
+}
+
+function showHome() {
+  detachView();
+}
+
+function showContent() {
+  const active = getActiveTab();
+  if (active && active.view) {
+    attachView(active.view);
+  }
 }
 
 function close(tabId) {
@@ -167,14 +191,14 @@ function close(tabId) {
   const tab = tabs[idx];
   // Remove from window
   if (chromeWin && tab.view) {
-    try { chromeWin.contentView.removeChildView(tab.view); } catch {}
+    try { chromeWin.contentView.removeChildView(tab.view); _viewAttached = false; } catch {}
   }
   if (tab.view && tab.view.webContents && !tab.view.webContents.isDestroyed()) {
     tab.view.webContents.close();
   }
   tabs.splice(idx, 1);
   if (tabs.length === 0) {
-    create(); // always keep at least one tab
+    create();
     return;
   }
   if (activeTabId === tabId) {
@@ -195,10 +219,9 @@ function setActive(tabId) {
     try { chromeWin.contentView.removeChildView(prev.view); } catch {}
   }
 
-  // Show next view
-  if (chromeWin && next.view) {
-    try { chromeWin.contentView.addChildView(next.view); } catch {}
-    updateViewBounds();
+  // Only show next view if it has a URL (not a blank new tab)
+  if (next.view && next.url) {
+    attachView(next.view);
   }
 
   broadcast();
@@ -222,8 +245,11 @@ function navigate(tabId, url) {
   tab.loading = true;
   broadcast();
 
+  // Make the view visible before navigating
+  attachView(tab.view);
+
   tab.view.webContents.loadURL(url).catch((err) => {
-    tab.title = 'Error';
+    tab.title = 'Error — ' + (err.message || 'Failed to load');
     tab.loading = false;
     broadcast();
     logger.warn('tabs', 'Navigation failed', { url, error: err.message });
@@ -263,8 +289,10 @@ function goForward(tabId) {
 function updateViewBounds() {
   if (!chromeWin) return;
   const [w, h] = chromeWin.getSize();
-  viewBounds.width = Math.max(200, w - 280);
-  viewBounds.height = Math.max(200, h - 90);
+  viewBounds.x = 12;
+  viewBounds.y = 86;
+  viewBounds.width = Math.max(200, w - 24);
+  viewBounds.height = Math.max(200, h - 140);
   const active = getActiveTab();
   if (active && active.view) {
     try { active.view.setBounds(viewBounds); } catch {}
@@ -273,12 +301,16 @@ function updateViewBounds() {
 
 function broadcast() {
   if (chromeWin && !chromeWin.webContents.isDestroyed()) {
-    chromeWin.webContents.send('tabs:changed', getAll(), activeTabId);
+    const allTabs = getAll();
+    const activeTab = getActiveTab();
+    const activeId = activeTab?.id || null;
+    const activeUrl = activeTab ? activeTab.url : '';
+    const activeTitle = activeTab ? activeTab.title : '';
+    chromeWin.webContents.send('tabs:changed', allTabs, activeId, activeUrl, activeTitle);
   }
 }
 
 function getStateForContentsId(wcId) {
-  // Find tab by webContents id
   const tab = tabs.find((t) => t.view && t.view.webContents && t.view.webContents.id === wcId);
   if (!tab) return {};
   let host = '';
@@ -288,7 +320,6 @@ function getStateForContentsId(wcId) {
 }
 
 function init(opts = {}) {
-  // Restore last window state
   setChromeWindow(opts.window);
   create(opts);
 }
@@ -297,4 +328,5 @@ module.exports = {
   init, create, close, setActive, navigate, reload, stop,
   goBack, goForward, getActiveTab, getAll, setChromeWindow,
   updateViewBounds, getStateForContentsId, broadcast,
+  showHome, showContent,
 };

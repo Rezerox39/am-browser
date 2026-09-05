@@ -7,31 +7,39 @@
   }
   const $ = id => document.getElementById(id);
 
-  /* ── i18n ─────────────────────────────────────────────────── */
-  const i18n = {
-    s: {}, f: {},
-    async init() {
-      try {
-        const cfg = await api.invoke('settings:get');
-        const lang = cfg.language || 'en';
-        await this.load(lang);
-        if (lang !== 'en' && !Object.keys(this.f).length) try { this.f = await (await fetch('../shared/i18n/locales/en.json')).json(); } catch {}
-      } catch {}
-    },
-    async load(lang) {
-      try { this.s = await (await fetch('../shared/i18n/locales/' + lang + '.json')).json(); } catch { this.s = {}; }
-      if (!Object.keys(this.f).length) try { this.f = await (await fetch('../shared/i18n/locales/en.json')).json(); } catch {}
-    },
-    t(k) { return this.s[k] || this.f[k] || k; },
-  };
+  /* ── i18n — loaded via IPC from main (works in asar) ─────── */
+  const i18n = { s: {}, f: {} };
+  async function initI18n() {
+    try {
+      const strings = await api.invoke('i18n:getStrings');
+      if (strings && typeof strings === 'object') i18n.s = strings;
+    } catch (e) { console.warn('i18n load failed', e); }
+    try {
+      const cfg = await api.invoke('settings:get');
+      const lang = cfg.language || 'en';
+      if (lang !== 'en') {
+        await api.invoke('i18n:setLocale', lang);
+        const localized = await api.invoke('i18n:getStrings');
+        if (localized && typeof localized === 'object') i18n.s = localized;
+      }
+    } catch (e) { console.warn('i18n lang load failed', e); }
+  }
+  function t(k) { return i18n.s[k] || k; }
   function applyI18n() {
-    document.querySelectorAll('[data-i18n]').forEach(e => { const k = e.getAttribute('data-i18n'); if (k) e.textContent = i18n.t(k); });
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(e => { const k = e.getAttribute('data-i18n-placeholder'); if (k) e.placeholder = i18n.t(k); });
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const k = el.getAttribute('data-i18n');
+      if (k) el.textContent = t(k);
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const k = el.getAttribute('data-i18n-placeholder');
+      if (k) el.placeholder = t(k);
+    });
   }
 
   /* ── State ────────────────────────────────────────────────── */
   let allTabs = [], activeId = '', activeUrl = '', activeTitle = '';
   let currentPanel = '';
+  let showingHome = true;
 
   /* ── DOM refs ─────────────────────────────────────────────── */
   const tabStrip = $('tabStrip'), tabCount = $('tabCount');
@@ -47,18 +55,22 @@
   function favicon(url) { try { return new URL(url).hostname[0]?.toUpperCase() || '?'; } catch { return '?'; } }
   function fmtBytes(b) { if (!b || isNaN(b)) return '0 B'; const u = ['B','KB','MB','GB']; let i = 0, n = b; while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + ' ' + u[i]; }
   function toast(msg) {
-    let t = $('toast');
-    if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
-    t.textContent = msg; t.classList.add('show');
-    clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 1800);
+    let el = $('toast');
+    if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+  async function safeInvoke(channel, ...args) {
+    try { return await api.invoke(channel, ...args); }
+    catch (e) { console.error('IPC failed:', channel, e); return undefined; }
   }
 
-  /* ── Navigation (ALL invoke, NEVER send) ──────────────────── */
+  /* ── Navigation ───────────────────────────────────────────── */
   async function navigate(url) {
     try {
-      const id = await api.invoke('tabs:getActiveId');
-      if (!id) return;
-      await api.invoke('tabs:navigate', id, url);
+      const id = await safeInvoke('tabs:getActiveId');
+      if (!id) { console.warn('navigate: no active tab id'); return; }
+      await safeInvoke('tabs:navigate', id, url);
     } catch (e) { console.error('navigate error', e); }
   }
   function normalize(v) {
@@ -76,21 +88,44 @@
     for (const tab of allTabs) {
       const el = document.createElement('div');
       el.className = 'tab-chip' + (tab.id === activeId ? ' active' : '');
-      el.innerHTML = '<span class="tc-favicon">' + (tab.loading ? '⟳' : favicon(tab.url)) + '</span><span class="tc-title">' + (tab.title || 'New Tab') + '</span><span class="tc-close">✕</span>';
-      el.querySelector('.tc-close').addEventListener('click', e => { e.stopPropagation(); api.invoke('tabs:close', tab.id); });
-      el.addEventListener('click', () => api.invoke('tabs:setActive', tab.id));
+      el.innerHTML =
+        '<span class="tc-favicon">' + (tab.loading ? '⟳' : favicon(tab.url)) + '</span>' +
+        '<span class="tc-title">' + (tab.title || 'New Tab') + '</span>' +
+        '<span class="tc-close">✕</span>';
+      el.querySelector('.tc-close').addEventListener('click', e => { e.stopPropagation(); safeInvoke('tabs:close', tab.id); });
+      el.addEventListener('click', () => safeInvoke('tabs:setActive', tab.id));
       tabStrip.appendChild(el);
     }
     if (tabCount) tabCount.textContent = allTabs.length || 1;
   }
 
   /* ── View sync ────────────────────────────────────────────── */
-  function syncView() {
+  async function syncView() {
     const hasUrl = !!activeUrl;
-    homeEl.classList.toggle('hidden', hasUrl);
-    urlBar.style.display = hasUrl ? 'flex' : 'none';
-    urlBarText.textContent = hasUrl ? (activeTitle || activeUrl) : '';
+    if (hasUrl) {
+      homeEl.classList.add('hidden');
+      urlBar.style.display = 'flex';
+      urlBarText.textContent = activeTitle || activeUrl;
+      showingHome = false;
+      // Tell main to show the WebContentsView
+      await safeInvoke('tabs:showContent');
+    } else {
+      homeEl.classList.remove('hidden');
+      urlBar.style.display = 'none';
+      showingHome = true;
+      // Tell main to hide the WebContentsView (don't block home search)
+      await safeInvoke('tabs:showHome');
+    }
     urlEditBar.classList.add('hidden');
+  }
+
+  function showHome() {
+    homeEl.classList.remove('hidden');
+    urlBar.style.display = 'none';
+    urlEditBar.classList.add('hidden');
+    showingHome = true;
+    safeInvoke('tabs:showHome');
+    setTimeout(() => homeInput.focus(), 50);
   }
 
   /* ── URL edit bar ─────────────────────────────────────────── */
@@ -113,17 +148,32 @@
       closeUrlEdit();
     }
     if (e.key === 'Escape') closeUrlEdit();
+    e.stopPropagation();
   });
-  urlInput.addEventListener('blur', () => setTimeout(closeUrlEdit, 150));
+  urlInput.addEventListener('blur', () => setTimeout(closeUrlEdit, 200));
 
-  /* ── Home search (sole search interface) ──────────────────── */
+  /* ── Home search ──────────────────────────────────────────── */
   homeInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
-      const url = normalize(homeInput.value);
-      if (url) navigate(url);
-      homeInput.value = '';
+      const url = normalize(homeInput.value.trim());
+      if (url) {
+        navigate(url);
+        homeInput.value = '';
+        homeInput.blur();
+      }
+    }
+    if (e.key === 'Escape') {
+      homeInput.blur();
     }
     e.stopPropagation();
+  });
+
+  // When home screen is clicked, focus the search input
+  homeEl.addEventListener('click', e => {
+    // Only focus if clicking on the background (not already focused input)
+    if (e.target !== homeInput) {
+      setTimeout(() => homeInput.focus(), 20);
+    }
   });
 
   /* ── Menu ─────────────────────────────────────────────────── */
@@ -147,12 +197,12 @@
   }
   function handleMenu(action) {
     closeMenu();
-    if (action === 'New Tab') api.invoke('tabs:create', {});
-    else if (action === 'Bookmarks') openPanel('bookmarks', 'Bookmarks');
-    else if (action === 'History') openPanel('history', 'History');
-    else if (action === 'Downloads') openPanel('downloads', 'Downloads');
-    else if (action === 'Refresh') { if (activeId) api.invoke('tabs:reload', activeId); }
-    else if (action === 'Settings') openPanel('settings', 'Settings');
+    if (action === 'New Tab') safeInvoke('tabs:create', {});
+    else if (action === 'Bookmarks') openPanel('bookmarks', t('bookmarks.title'));
+    else if (action === 'History') openPanel('history', t('history.title'));
+    else if (action === 'Downloads') openPanel('downloads', t('downloads.title'));
+    else if (action === 'Refresh') { if (activeId) safeInvoke('tabs:reload', activeId); }
+    else if (action === 'Settings') openPanel('settings', t('settings.title'));
   }
   function openMenu() { buildMenu(); menuBackdrop.classList.add('open'); sideMenu.classList.add('open'); }
   function closeMenu() { menuBackdrop.classList.remove('open'); sideMenu.classList.remove('open'); }
@@ -186,8 +236,12 @@
 
   async function renderHistory() {
     const q = panelSearch.value.trim();
-    let items; try { items = q ? await api.invoke('history:search', q, 50) : await api.invoke('history:getRecent', 100); } catch { return empty('Error loading history'); }
-    if (!items.length) return empty(i18n.t('history.empty'));
+    let items;
+    try {
+      items = q ? await safeInvoke('history:search', q, 50) : await safeInvoke('history:getRecent', 100);
+      if (!Array.isArray(items)) items = [];
+    } catch { return empty('Error loading history'); }
+    if (!items.length) return empty(t('history.empty'));
     panelBody.innerHTML = '';
     for (const it of items) {
       const d = document.createElement('div'); d.className = 'pi';
@@ -197,87 +251,104 @@
     }
   }
   async function renderBookmarks() {
-    let items; try { items = await api.invoke('bookmarks:getAll'); } catch { return empty('Error'); }
-    if (!items.length) return empty(i18n.t('bookmarks.empty'));
+    let items;
+    try { items = await safeInvoke('bookmarks:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
+    if (!items.length) return empty(t('bookmarks.empty'));
     panelBody.innerHTML = '';
     for (const bm of items) {
       const d = document.createElement('div'); d.className = 'pi';
       d.innerHTML = '<div class="pi-title">' + (bm.title || bm.url) + '</div><div class="pi-url">' + bm.url + '</div><span class="pi-del">✕</span>';
       d.addEventListener('click', () => { navigate(bm.url); closePanel(); });
-      d.querySelector('.pi-del').addEventListener('click', async e => { e.stopPropagation(); await api.invoke('bookmarks:remove', bm.id); renderBookmarks(); });
+      d.querySelector('.pi-del').addEventListener('click', async e => { e.stopPropagation(); await safeInvoke('bookmarks:remove', bm.id); renderBookmarks(); });
       panelBody.appendChild(d);
     }
   }
   async function renderDownloads() {
-    let items; try { items = await api.invoke('downloads:getAll'); } catch { return empty('Error'); }
-    if (!items.length) return empty(i18n.t('downloads.empty'));
+    let items;
+    try { items = await safeInvoke('downloads:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
+    if (!items.length) return empty(t('downloads.empty'));
     panelBody.innerHTML = '';
     for (const dl of items) {
-      const st = dl.state === 'progressing' ? 'Downloading...' : dl.state === 'failed' ? 'Failed' : dl.state === 'cancelled' ? 'Cancelled' : 'Complete';
+      const st = dl.state === 'progressing' ? t('downloads.downloading') : dl.state === 'failed' ? t('downloads.failed') : dl.state === 'cancelled' ? t('downloads.cancelled') : t('downloads.complete');
       const d = document.createElement('div'); d.className = 'dl-item';
-      d.innerHTML = '<div class="dl-name">' + dl.filename + '</div><div class="dl-meta">' + st + ' · ' + fmtBytes(dl.receivedBytes || dl.totalBytes) + '</div><div class="dl-actions"><button>Open</button><button>Remove</button></div>';
-      d.querySelectorAll('button')[0].addEventListener('click', () => { if (dl.state === 'complete' && dl.savePath) api.invoke('downloads:openFile', dl.savePath); });
-      d.querySelectorAll('button')[1].addEventListener('click', async () => { await api.invoke('downloads:remove', dl.id); renderDownloads(); });
+      d.innerHTML = '<div class="dl-name">' + dl.filename + '</div><div class="dl-meta">' + st + ' · ' + fmtBytes(dl.receivedBytes || dl.totalBytes) + '</div><div class="dl-actions"><button>' + t('downloads.open') + '</button><button>' + t('downloads.remove') + '</button></div>';
+      d.querySelectorAll('button')[0].addEventListener('click', () => { if (dl.state === 'complete' && dl.savePath) safeInvoke('downloads:openFile', dl.savePath); });
+      d.querySelectorAll('button')[1].addEventListener('click', async () => { await safeInvoke('downloads:remove', dl.id); renderDownloads(); });
       panelBody.appendChild(d);
     }
   }
   async function renderSettings() {
-    const cfg = await api.invoke('settings:get');
-    const avail = await api.invoke('i18n:getAvailable');
+    const cfg = await safeInvoke('settings:get');
+    const avail = await safeInvoke('i18n:getAvailable');
     panelBody.innerHTML = '';
-    const sec = t => { const el = document.createElement('div'); el.className = 'sec-title'; el.textContent = t; return el; };
-    const row = (lbl, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + lbl + '</label>'; el.appendChild(typeof ctrl === 'string' ? Object.assign(document.createElement('span'), { className: 'sub', innerHTML: ctrl }) : ctrl); return el; };
-    const sw = (on, cb) => { const el = document.createElement('div'); el.className = 'switch' + (on ? ' on' : ''); el.addEventListener('click', () => { el.classList.toggle('on'); cb(el.classList.contains('on')); }); return el; };
-    const sel = (opts, val, cb) => { const s = document.createElement('select'); s.className = 'setting-sel'; opts.forEach(o => { const op = document.createElement('option'); op.value = o.v; op.textContent = o.l; if (o.v === val) op.selected = true; s.appendChild(op); }); s.addEventListener('change', () => cb(s.value)); return s; };
+    const sec = title => { const el = document.createElement('div'); el.className = 'sec-title'; el.textContent = title; return el; };
+    const item = (label, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + label + '</label>'; el.appendChild(ctrl); return el; };
 
-    panelBody.appendChild(sec('General'));
-    panelBody.appendChild(row('Language', sel(avail.map(l => ({ v: l, l: l.toUpperCase() })), cfg.language, async v => { await api.invoke('settings:set', 'language', v); await i18n.load(v); applyI18n(); renderSettings(); })));
-    panelBody.appendChild(row('Search Engine', sel([{ v: 'google', l: 'Google' }, { v: 'bing', l: 'Bing' }, { v: 'duckduckgo', l: 'DuckDuckGo' }], cfg.searchEngine, v => api.invoke('settings:set', 'searchEngine', v))));
-    panelBody.appendChild(sec('Ad Blocking'));
-    panelBody.appendChild(row('Ad Blocking', sw(cfg.adblock.enabled, v => { cfg.adblock.enabled = v; api.invoke('settings:set', 'adblock', cfg.adblock); })));
-    const st = await api.invoke('adblock:getStats').catch(() => null);
-    if (st) panelBody.appendChild(row('Blocked', '<span style="color:var(--accent)">' + st.blocked + '</span>'));
-    panelBody.appendChild(sec('Clear'));
-    const clrBtn = document.createElement('button'); clrBtn.className = 'btn'; clrBtn.textContent = 'Clear History';
-    clrBtn.addEventListener('click', async () => { if (confirm('Clear all history?')) { await api.invoke('history:clear'); toast('History cleared'); } });
+    // Language
+    panelBody.appendChild(sec(t('settings.language')));
+    const sel = document.createElement('select'); sel.className = 'setting-sel';
+    (avail || []).forEach(loc => { const o = document.createElement('option'); o.value = loc; o.textContent = loc.toUpperCase(); if (loc === cfg.language) o.selected = true; sel.appendChild(o); });
+    sel.addEventListener('change', async () => { await safeInvoke('settings:set', 'language', sel.value); await initI18n(); applyI18n(); toast('Language: ' + sel.value); });
+    panelBody.appendChild(item(t('settings.language'), sel));
+
+    // Search engine
+    panelBody.appendChild(sec(t('settings.searchEngine')));
+    const engines = { google: 'Google', duckduckgo: 'DuckDuckGo', bing: 'Bing' };
+    const engSel = document.createElement('select'); engSel.className = 'setting-sel';
+    Object.entries(engines).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.searchEngine) o.selected = true; engSel.appendChild(o); });
+    engSel.addEventListener('change', () => { safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search engine: ' + engines[engSel.value]); });
+    panelBody.appendChild(item(t('settings.searchEngine'), engSel));
+
+    // Adblock
+    panelBody.appendChild(sec(t('settings.adblocking')));
+    const abSw = document.createElement('div');
+    abSw.className = 'switch' + (cfg.adblock?.enabled ? ' on' : '');
+    abSw.addEventListener('click', () => { abSw.classList.toggle('on'); safeInvoke('settings:set', 'adblock', { ...cfg.adblock, enabled: abSw.classList.contains('on') }); toast(abSw.classList.contains('on') ? 'Ad blocking: ON' : 'Ad blocking: OFF'); });
+    panelBody.appendChild(item(t('settings.adblockEnabled'), abSw));
+
+    // Clear data
+    panelBody.appendChild(sec(t('settings.clearData')));
+    const clrBtn = document.createElement('button'); clrBtn.className = 'btn'; clrBtn.textContent = t('settings.clearHistory');
+    clrBtn.addEventListener('click', async () => { if (confirm(t('dialog.clearHistory'))) { await safeInvoke('history:clear'); toast('History cleared'); } });
     panelBody.appendChild(clrBtn);
   }
   async function renderSiteSettings() {
     if (!activeUrl) return empty('No site loaded');
     let host; try { host = new URL(activeUrl).hostname; } catch { return empty('—'); }
-    let rule; try { rule = await api.invoke('site:getRule', host); } catch { rule = {}; }
+    let rule; try { rule = await safeInvoke('site:getRule', host); } catch { rule = {}; }
     rule = rule || {};
     panelBody.innerHTML = '';
     const hostEl = document.createElement('div'); hostEl.className = 'mg-item'; hostEl.innerHTML = '<label style="font-family:monospace;font-size:12px;color:var(--accent)">' + host + '</label>';
     panelBody.appendChild(hostEl);
     const sw = (on, cb) => { const el = document.createElement('div'); el.className = 'switch' + (on ? ' on' : ''); el.addEventListener('click', () => { el.classList.toggle('on'); cb(el.classList.contains('on')); }); return el; };
     const row = (lbl, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + lbl + '</label>'; el.appendChild(ctrl); return el; };
-    for (const [lbl, rk] of [['Ad blocking', 'adblockEnabled'], ['JavaScript', 'javascript'], ['Pop-ups', 'popups']]) {
-      panelBody.appendChild(row(lbl, sw(rule[rk] || false, v => { rule[rk] = v; api.invoke('site:setRule', host, rule); toast('Saved'); })));
+    for (const [lbl, rk] of [[t('site.adblock'), 'adblockEnabled'], [t('site.javascript'), 'javascript'], [t('site.popups'), 'popups']]) {
+      panelBody.appendChild(row(lbl, sw(rule[rk] || false, v => { rule[rk] = v; safeInvoke('site:setRule', host, rule); toast('Saved'); })));
     }
   }
 
-  /* ── Button wiring (ALL use api.invoke) ───────────────────── */
+  /* ── Navigation pill buttons ──────────────────────────────── */
   $('navBack').addEventListener('click', async () => {
-    if (!activeId) return;
-    try { await api.invoke('tabs:goBack', activeId); } catch (e) { console.error('goBack', e); }
+    const id = activeId || await safeInvoke('tabs:getActiveId');
+    if (!id) return;
+    try { await safeInvoke('tabs:goBack', id); } catch (e) { console.error('goBack failed', e); toast('Cannot go back'); }
   });
   $('navForward').addEventListener('click', async () => {
-    if (!activeId) return;
-    try { await api.invoke('tabs:goForward', activeId); } catch (e) { console.error('goForward', e); }
+    const id = activeId || await safeInvoke('tabs:getActiveId');
+    if (!id) return;
+    try { await safeInvoke('tabs:goForward', id); } catch (e) { console.error('goForward failed', e); toast('Cannot go forward'); }
   });
   $('navHome').addEventListener('click', () => {
-    homeEl.classList.remove('hidden');
-    urlBar.style.display = 'none';
-    homeInput.value = '';
-    setTimeout(() => homeInput.focus(), 50);
+    showHome();
   });
   $('navTabs').addEventListener('click', async () => {
     try {
-      const tabs = await api.invoke('tabs:getAll');
-      if (tabs && tabs.length > 1) {
+      const tabs = await safeInvoke('tabs:getAll');
+      if (Array.isArray(tabs) && tabs.length > 1) {
         const idx = (tabs.findIndex(t => t.id === activeId) + 1) % tabs.length;
-        await api.invoke('tabs:setActive', tabs[idx].id);
+        await safeInvoke('tabs:setActive', tabs[idx].id);
+      } else {
+        await safeInvoke('tabs:create', {});
       }
     } catch (e) { console.error('tabs cycle', e); }
   });
@@ -296,20 +367,24 @@
   $('panel-back').addEventListener('click', closePanel);
   panelSearch.addEventListener('input', loadPanel);
 
-  // macOS window controls (ALL use api.invoke)
-  $('btnClose').addEventListener('click', async () => { try { await api.invoke('window:close'); } catch {} });
-  $('btnMinimize').addEventListener('click', async () => { try { await api.invoke('window:minimize'); } catch {} });
-  $('btnMaximize').addEventListener('click', async () => { try { await api.invoke('window:maximize'); } catch {} });
+  // macOS window controls
+  $('btnClose').addEventListener('click', async () => { try { await safeInvoke('window:close'); } catch {} });
+  $('btnMinimize').addEventListener('click', async () => { try { await safeInvoke('window:minimize'); } catch {} });
+  $('btnMaximize').addEventListener('click', async () => { try { await safeInvoke('window:maximize'); } catch {} });
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (renderer side)
   document.addEventListener('keydown', e => {
     const m = e.ctrlKey || e.metaKey;
-    if (m && e.key === 't') { e.preventDefault(); api.invoke('tabs:create', {}); }
+    if (m && e.key === 't') { e.preventDefault(); safeInvoke('tabs:create', {}); }
     if (m && e.key === 'l') { e.preventDefault(); openUrlEdit(); }
-    if (m && e.key === 'w') { e.preventDefault(); if (activeId) api.invoke('tabs:close', activeId); }
+    if (m && e.key === 'w') { e.preventDefault(); if (activeId) safeInvoke('tabs:close', activeId); }
+    if (e.key === 'Escape') {
+      closeMenu();
+      closePanel();
+    }
   });
 
-  // IPC from main
+  // IPC from main process
   api.on('tabs:changed', (tabs, aid, url, title) => {
     allTabs = Array.isArray(tabs) ? tabs : [];
     activeId = aid || '';
@@ -318,22 +393,31 @@
     renderTabs();
     syncView();
   });
+  api.on('tabs:focusAddressBar', () => openUrlEdit());
   api.on('window:maximized', isMax => {
     const dot = $('btnMaximize');
-    if (dot) dot.title = isMax ? 'Restore' : 'Maximize';
+    if (dot) dot.title = isMax ? t('window.restore') : t('window.maximize');
   });
 
   /* ── Init ─────────────────────────────────────────────────── */
   (async () => {
-    await i18n.init();
+    await initI18n();
     applyI18n();
+
     try {
-      const tabs = await api.invoke('tabs:getAll');
-      const aid = await api.invoke('tabs:getActiveId');
-      if (Array.isArray(tabs)) { allTabs = tabs; activeId = aid || ''; }
-    } catch (e) { console.error('init tabs', e); }
+      const tabs = await safeInvoke('tabs:getAll');
+      const aid = await safeInvoke('tabs:getActiveId');
+      if (Array.isArray(tabs)) { allTabs = tabs; }
+      if (aid) activeId = aid;
+    } catch (e) { console.error('init tabs error', e); }
+
     renderTabs();
-    syncView();
+    await syncView();
+
+    // Show home + focus search on startup
+    showingHome = true;
+    homeEl.classList.remove('hidden');
+    urlBar.style.display = 'none';
     setTimeout(() => homeInput.focus(), 100);
   })();
 })();

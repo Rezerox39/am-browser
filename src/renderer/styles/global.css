@@ -64,7 +64,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 
 /* ── Tab strip ──────────────────────────────────────────────── */
 .tab-strip {
-  position: fixed; top: 0; left: 12px; right: 110px; height: 52px;
+  position: fixed; top: 0; left: 12px; right: 120px; height: 52px;
   display: flex; align-items: center; gap: 2px; z-index: 90;
   overflow-x: auto; scrollbar-width: none;
   -webkit-app-region: no-drag;
@@ -294,12 +294,15 @@ textarea.setting-input { min-height: 56px; resize: vertical; font-family: inheri
 #home-search-wrap { margin-top: 36px; width: min(420px, 80vw); }
 #home-search {
   display: flex; align-items: center; width: 100%; height: 48px;
-  border: 1px solid #333; border-radius: var(--radius-pill);
+  border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius-pill);
   padding: 0 18px; gap: 10px; color: var(--fg-muted);
+  background: rgba(18,18,18,0.82);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.02);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-#home-search:hover { border-color: #555; }
-#home-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(90,131,255,0.15); }
+#home-search:hover { border-color: rgba(255,255,255,0.12); }
+#home-search:focus-within { border-color: rgba(90,131,255,0.45); box-shadow: 0 8px 30px rgba(0,0,0,0.45), 0 0 0 3px rgba(90,131,255,0.12); }
 #home-search svg { width: 18px; height: 18px; flex-shrink: 0; }
 #home-search input { flex: 1; height: 32px; font-size: 15px; color: var(--fg); }
 #home-search input::placeholder { color: var(--fg-muted); }

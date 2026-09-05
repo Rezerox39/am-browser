@@ -1,4 +1,3 @@
-
 'use strict';
 
 const { ipcMain, shell, clipboard } = require('electron');
@@ -8,7 +7,7 @@ const history = require('./history');
 const bookmarks = require('./bookmarks');
 const downloads = require('./downloads');
 const adblock = require('./adblock');
-const { setLocale, getAvailable, t } = require('../shared/i18n');
+const { setLocale, getAvailable, getStrings } = require('../shared/i18n');
 const logger = require('./logger');
 
 function register(win) {
@@ -30,6 +29,10 @@ function register(win) {
     const t = tabs.getActiveTab();
     return t ? { url: t.url, title: t.title } : { url: '', title: '' };
   });
+
+  // ── View visibility ───────────────────────────────────────────
+  ipcMain.handle('tabs:showHome', () => { tabs.showHome(); });
+  ipcMain.handle('tabs:showContent', () => { tabs.showContent(); });
 
   // ── Bookmarks ─────────────────────────────────────────────────
   ipcMain.handle('bookmarks:getAll', () => bookmarks.getAll());
@@ -81,7 +84,6 @@ function register(win) {
       if (!d.siteRules) d.siteRules = {};
       d.siteRules[host] = rule;
     });
-    // Apply to active tab if it matches this host
     const activeTab = tabs.getActiveTab();
     if (activeTab && activeTab.view) {
       let activeHost = '';
@@ -124,17 +126,18 @@ function register(win) {
 
   // ── i18n ──────────────────────────────────────────────────────
   ipcMain.handle('i18n:getAvailable', () => getAvailable());
+  ipcMain.handle('i18n:getStrings', () => getStrings());
   ipcMain.handle('i18n:setLocale', (e, loc) => { config.set('language', loc); setLocale(loc); return true; });
 
   // ── Adblock ───────────────────────────────────────────────────
   ipcMain.handle('adblock:getStats', () => adblock.stats());
   ipcMain.handle('adblock:isEnabled', () => adblock.isEnabled());
 
-  // Listen for tab state changes and forward
-  tabs.broadcast = function() {
+  // Listen for tab state changes and forward to renderer
+  tabs.broadcast = function () {
     const allTabs = tabs.getAll();
-    const activeId = tabs.getActiveTab()?.id || null;
     const activeTab = tabs.getActiveTab();
+    const activeId = activeTab?.id || null;
     const activeUrl = activeTab ? activeTab.url : '';
     const activeTitle = activeTab ? activeTab.title : '';
     if (win && !win.webContents.isDestroyed()) {

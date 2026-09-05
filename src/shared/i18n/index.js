@@ -1,4 +1,3 @@
-
 'use strict';
 
 const fs = require('fs');
@@ -37,10 +36,17 @@ function t(key, vars) {
   let val = strings[key] || fallback[key] || key;
   if (vars && typeof val === 'string') {
     for (const [k, v] of Object.entries(vars)) {
-      val = val.replace(new RegExp('\{\{' + k + '\}}', 'g'), String(v));
+      val = val.replace(new RegExp('\{\{' + k + '\}\}', 'g'), String(v));
     }
   }
   return val;
+}
+
+function getStrings() {
+  const merged = {};
+  if (fallback && typeof fallback === 'object') Object.assign(merged, fallback);
+  if (strings && typeof strings === 'object') Object.assign(merged, strings);
+  return merged;
 }
 
 function getLocale() { return currentLocale; }
@@ -49,4 +55,4 @@ function getAvailable() { return [...available]; }
 
 load(currentLocale);
 
-module.exports = { t, getLocale, setLocale, getAvailable, load };
+module.exports = { t, getLocale, setLocale, getAvailable, load, getStrings };

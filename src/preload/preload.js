@@ -7,6 +7,8 @@ const ALLOWED_INVOKE = new Set([
   'tabs:getAll', 'tabs:getActiveId', 'tabs:getCurrentUrl',
   'tabs:create', 'tabs:close', 'tabs:setActive', 'tabs:navigate',
   'tabs:reload', 'tabs:stop', 'tabs:goBack', 'tabs:goForward',
+  // View visibility
+  'tabs:showHome', 'tabs:showContent',
   // Bookmarks
   'bookmarks:getAll', 'bookmarks:getByUrl', 'bookmarks:add', 'bookmarks:remove',
   // History
@@ -23,7 +25,7 @@ const ALLOWED_INVOKE = new Set([
   // Window
   'window:minimize', 'window:maximize', 'window:close', 'window:isMaximized',
   // i18n
-  'i18n:getAvailable', 'i18n:setLocale',
+  'i18n:getAvailable', 'i18n:setLocale', 'i18n:getStrings',
   // Adblock
   'adblock:getStats', 'adblock:isEnabled',
 ]);
