@@ -1,0 +1,40 @@
+{
+  "name": "am-browser",
+  "version": "1.0.0",
+  "description": "AM — a minimal, fast Windows browser with ad blocking and per-site control.",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "lint": "node scripts/check.js",
+    "build:win": "electron-builder --win portable"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {},
+  "build": {
+    "appId": "com.am.browser",
+    "productName": "AM",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.png"
+    },
+    "portable": {
+      "artifactName": "AM-${version}-win.exe"
+    }
+  },
+  "author": "AM Browser Project",
+  "license": "MIT"
+}

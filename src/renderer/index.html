@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: http:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data:; connect-src 'self' https: http:;">
+  <title>AM</title>
+  <link rel="stylesheet" href="styles/global.css">
+</head>
+<body class="am-shell">
+
+  <!-- ── DRAG HEADER ──────────────────────────────────────────── -->
+  <header class="drag-region" id="dragRegion">
+    <div class="win-controls no-drag" id="winControls">
+      <button class="win-btn" id="btnMinimize" title="Minimize">─</button>
+      <button class="win-btn" id="btnMaximize" title="Maximize">□</button>
+      <button class="win-btn win-close" id="btnClose" title="Close">✕</button>
+    </div>
+
+    <div class="omnibox-row no-drag">
+      <button class="nav-btn" id="btnBack" title="Back" data-i18n="nav.back">←</button>
+      <button class="nav-btn" id="btnForward" title="Forward" data-i18n="nav.forward">→</button>
+      <button class="nav-btn" id="btnReload" title="Reload" data-i18n="nav.reload">↻</button>
+
+      <div class="omnibox-capsule" id="omnibox">
+        <span class="omnibox-lock" id="omniboxLock">🔒</span>
+        <input type="text" id="urlInput" class="url-input" placeholder="Search or type URL" data-i18n-placeholder="omnibox.placeholder" autocomplete="off" spellcheck="false">
+        <span class="omnibox-action" id="omniboxAction" title="Shield / Site Settings">⛊</span>
+      </div>
+
+      <button class="nav-btn" id="btnSettings" title="Settings" data-i18n="settings.title">⚙</button>
+    </div>
+  </header>
+
+  <!-- ── FLOATING SIDEBAR ────────────────────────────────────── -->
+  <aside class="glass-sidebar no-drag" id="sidebar">
+    <div class="sidebar-top">
+      <div class="am-logo">AM</div>
+    </div>
+    <div class="tab-list" id="tabList"></div>
+    <button class="add-tab-btn" id="btnNewTab" title="New tab" data-i18n="tab.new">+</button>
+    <div class="sidebar-bottom">
+      <button class="sidebar-btn" id="btnHome" title="Home" data-i18n="nav.home">⌂</button>
+      <button class="sidebar-btn" id="btnHistory" title="History" data-i18n="history.title">⏱</button>
+      <button class="sidebar-btn" id="btnBookmarks" title="Bookmarks" data-i18n="bookmarks.title">★</button>
+      <button class="sidebar-btn" id="btnDownloads" title="Downloads" data-i18n="downloads.title">↓</button>
+    </div>
+  </aside>
+
+  <!-- ── OVERLAY PANELS ──────────────────────────────────────── -->
+  <div class="overlay-panel" id="panelHistory" style="display:none;">
+    <div class="panel-header">
+      <span data-i18n="history.title">History</span>
+      <button class="panel-close" id="panelHistoryClose">✕</button>
+    </div>
+    <input type="text" class="panel-search" id="historySearch" data-i18n-placeholder="history.searchPlaceholder" placeholder="Search history...">
+    <div class="panel-body" id="historyList"></div>
+    <div class="panel-footer">
+      <button class="panel-action-btn" id="historyClearBtn" data-i18n="history.clearAll">Clear All</button>
+    </div>
+  </div>
+
+  <div class="overlay-panel" id="panelBookmarks" style="display:none;">
+    <div class="panel-header">
+      <span data-i18n="bookmarks.title">Bookmarks</span>
+      <button class="panel-close" id="panelBookmarksClose">✕</button>
+    </div>
+    <div class="panel-body" id="bookmarksList"></div>
+    <div class="panel-footer">
+      <button class="panel-action-btn" id="bookmarksClearBtn" data-i18n="settings.clearBookmarks">Clear All</button>
+    </div>
+  </div>
+
+  <div class="overlay-panel" id="panelDownloads" style="display:none;">
+    <div class="panel-header">
+      <span data-i18n="downloads.title">Downloads</span>
+      <button class="panel-close" id="panelDownloadsClose">✕</button>
+    </div>
+    <div class="panel-body" id="downloadsList"></div>
+    <div class="panel-footer">
+      <button class="panel-action-btn" id="downloadsClearBtn" data-i18n="settings.clearDownloads">Clear All</button>
+    </div>
+  </div>
+
+  <div class="overlay-panel" id="panelSettings" style="display:none;">
+    <div class="panel-header">
+      <span data-i18n="settings.title">Settings</span>
+      <button class="panel-close" id="panelSettingsClose">✕</button>
+    </div>
+    <div class="panel-body settings-body" id="settingsPanel"></div>
+  </div>
+
+  <div class="overlay-panel" id="panelSiteSettings" style="display:none;">
+    <div class="panel-header">
+      <span data-i18n="site.title">Site Settings</span>
+      <button class="panel-close" id="panelSiteSettingsClose">✕</button>
+    </div>
+    <div class="panel-body" id="siteSettingsPanel"></div>
+  </div>
+
+  <!-- ── AMOLED BLACK BACKGROUND ─────────────────────────────── -->
+  <div class="amoled-bg"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
