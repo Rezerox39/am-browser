@@ -334,6 +334,164 @@ html, body {
 
 .sidebar-btn:hover { background: var(--am-surface-3); color: var(--am-accent); }
 
+/* ── FLOATING NAV PILL ─────────────────────────────────────── */
+.floating-pill {
+  position: fixed;
+  z-index: 100;
+  /* Initial position: bottom-center of the viewport */
+  left: 50%;
+  bottom: 32px;
+  transform: translate(-50%, 0);
+  will-change: transform;
+  /* No CSS transition — physics engine drives position */
+  pointer-events: none;
+}
+
+.floating-pill > * {
+  pointer-events: auto;
+}
+
+.pill-body {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: rgba(12, 12, 14, 0.82);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 9999px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(139, 123, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.pill-body:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(139, 123, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.pill-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--am-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  position: relative;
+}
+
+.pill-btn svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.pill-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--am-text);
+  transform: scale(1.08);
+}
+
+.pill-btn:active {
+  transform: scale(0.92);
+}
+
+.pill-btn-accent {
+  color: var(--am-accent);
+}
+
+.pill-btn-accent:hover {
+  background: rgba(139, 123, 255, 0.15);
+  color: #a99bff;
+}
+
+.pill-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.10);
+  margin: 0 2px;
+}
+
+/* ── Collapsed bubble state ─────────────────────────────────── */
+.pill-bubble {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(12, 12, 14, 0.85);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(139, 123, 255, 0.25);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(139, 123, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+}
+
+.pill-bubble:hover {
+  transform: scale(1.12);
+  border-color: rgba(139, 123, 255, 0.45);
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.6),
+    0 0 20px rgba(139, 123, 255, 0.2);
+}
+
+.pill-bubble:active {
+  transform: scale(0.95);
+}
+
+.pill-bubble-glow {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 123, 255, 0.15), transparent 70%);
+  pointer-events: none;
+  animation: pillGlowPulse 3s ease-in-out infinite;
+}
+
+@keyframes pillGlowPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.pill-bubble-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, var(--am-accent), var(--am-accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Pill drag ghost trail (visual feedback) ────────────────── */
+.pill-ghost {
+  position: fixed;
+  z-index: 99;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(139, 123, 255, 0.3);
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
 /* ── Overlay panels ─────────────────────────────────────────── */
 .overlay-panel {
   position: fixed;
@@ -634,10 +792,10 @@ textarea.ua-input:focus { border-color: var(--am-accent); }
 /* Toast */
 .toast {
   position: fixed;
-  bottom: 24px;
+  bottom: 90px;
   left: 50%;
   transform: translateX(-50%) translateY(20px);
-  z-index: 100;
+  z-index: 200;
   background: var(--am-surface-3);
   border: 1px solid var(--am-border-strong);
   color: var(--am-text);

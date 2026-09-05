@@ -17,10 +17,6 @@
     </div>
 
     <div class="omnibox-row no-drag">
-      <button class="nav-btn" id="btnBack" title="Back" data-i18n="nav.back">←</button>
-      <button class="nav-btn" id="btnForward" title="Forward" data-i18n="nav.forward">→</button>
-      <button class="nav-btn" id="btnReload" title="Reload" data-i18n="nav.reload">↻</button>
-
       <div class="omnibox-capsule" id="omnibox">
         <span class="omnibox-lock" id="omniboxLock">🔒</span>
         <input type="text" id="urlInput" class="url-input" placeholder="Search or type URL" data-i18n-placeholder="omnibox.placeholder" autocomplete="off" spellcheck="false">
@@ -39,12 +35,38 @@
     <div class="tab-list" id="tabList"></div>
     <button class="add-tab-btn" id="btnNewTab" title="New tab" data-i18n="tab.new">+</button>
     <div class="sidebar-bottom">
-      <button class="sidebar-btn" id="btnHome" title="Home" data-i18n="nav.home">⌂</button>
       <button class="sidebar-btn" id="btnHistory" title="History" data-i18n="history.title">⏱</button>
       <button class="sidebar-btn" id="btnBookmarks" title="Bookmarks" data-i18n="bookmarks.title">★</button>
       <button class="sidebar-btn" id="btnDownloads" title="Downloads" data-i18n="downloads.title">↓</button>
     </div>
   </aside>
+
+  <!-- ── FLOATING NAV PILL ────────────────────────────────────── -->
+  <nav class="floating-pill no-drag" id="floatingPill">
+    <div class="pill-body" id="pillBody">
+      <button class="pill-btn" id="pillBack" data-action="back" data-i18n="nav.back" title="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button class="pill-btn" id="pillForward" data-action="forward" data-i18n="nav.forward" title="Forward">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <button class="pill-btn" id="pillHome" data-action="home" data-i18n="nav.home" title="Home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </button>
+      <div class="pill-divider"></div>
+      <button class="pill-btn pill-btn-accent" id="pillNewTab" data-action="newTab" data-i18n="tab.new" title="New Tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button class="pill-btn" id="pillMenu" data-action="menu" title="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+      </button>
+    </div>
+    <!-- Collapsed bubble state -->
+    <div class="pill-bubble" id="pillBubble" style="display:none;">
+      <span class="pill-bubble-glow"></span>
+      <span class="pill-bubble-label">AM</span>
+    </div>
+  </nav>
 
   <!-- ── OVERLAY PANELS ──────────────────────────────────────── -->
   <div class="overlay-panel" id="panelHistory" style="display:none;">
@@ -100,6 +122,12 @@
   <!-- ── AMOLED BLACK BACKGROUND ─────────────────────────────── -->
   <div class="amoled-bg"></div>
 
+  <!-- Inline spring physics (renderer has no require()) -->
+  <script>
+  "use strict";
+  class Spring{constructor(o={}){this.stiffness=o.stiffness??180;this.damping=o.damping??12;this.mass=o.mass??1;this.precision=o.precision??0.5;this.position=o.position??0;this.velocity=o.velocity??0;this.target=o.target??o.position??0;this._settled=true}setPosition(v){this.position=v;this._settled=false}setTarget(v){if(Math.abs(this.target-v)>0.01){this.target=v;this._settled=false}}applyImpulse(v){this.velocity+=v;this._settled=false}step(dt){if(this._settled)return;dt=Math.min(dt,0.064);const d=this.position-this.target;const sf=-this.stiffness*d;const df=-this.damping*this.velocity;const a=(sf+df)/this.mass;this.velocity+=a*dt;this.position+=this.velocity*dt;if(Math.abs(this.velocity)<this.precision&&Math.abs(this.position-this.target)<this.precision){this.position=this.target;this.velocity=0;this._settled=true}}isSettled(){return this._settled}reset(){this.velocity=0;this._settled=true}}
+  class Spring2D{constructor(o={}){const s={stiffness:o.stiffness??180,damping:o.damping??12,mass:o.mass??1,precision:o.precision??0.5};this.x=new Spring({...s,position:o.x??0,target:o.targetX??o.x??0});this.y=new Spring({...s,position:o.y??0,target:o.targetY??o.y??0})}setPosition(x,y){this.x.setPosition(x);this.y.setPosition(y)}setTarget(x,y){this.x.setTarget(x);this.y.setTarget(y)}applyImpulse(vx,vy){this.x.applyImpulse(vx);this.y.applyImpulse(vy)}step(dt){this.x.step(dt);this.y.step(dt)}isSettled(){return this.x.isSettled()&&this.y.isSettled()}}
+  </script>
   <script src="app.js"></script>
 </body>
 </html>
