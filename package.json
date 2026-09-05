@@ -1,6 +1,6 @@
 {
   "name": "am-browser",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "AM \u2014 a minimal, fast Windows browser with ad blocking and per-site control.",
   "main": "src/main/main.js",
   "scripts": {

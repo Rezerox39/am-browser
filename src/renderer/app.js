@@ -7,8 +7,8 @@
   }
   const $ = id => document.getElementById(id);
 
-  /* ── i18n — loaded via IPC from main (works in asar) ─────── */
-  const i18n = { s: {}, f: {} };
+  /* ── i18n ─────────────────────────────────────────────────── */
+  const i18n = { s: {} };
   async function initI18n() {
     try {
       const strings = await api.invoke('i18n:getStrings');
@@ -22,24 +22,22 @@
         const localized = await api.invoke('i18n:getStrings');
         if (localized && typeof localized === 'object') i18n.s = localized;
       }
-    } catch (e) { console.warn('i18n lang load failed', e); }
+    } catch (e) { console.warn('i18n lang failed', e); }
   }
   function t(k) { return i18n.s[k] || k; }
   function applyI18n() {
     document.querySelectorAll('[data-i18n]').forEach(el => {
-      const k = el.getAttribute('data-i18n');
-      if (k) el.textContent = t(k);
+      const k = el.getAttribute('data-i18n'); if (k) el.textContent = t(k);
     });
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-      const k = el.getAttribute('data-i18n-placeholder');
-      if (k) el.placeholder = t(k);
+      const k = el.getAttribute('data-i18n-placeholder'); if (k) el.placeholder = t(k);
     });
   }
 
   /* ── State ────────────────────────────────────────────────── */
   let allTabs = [], activeId = '', activeUrl = '', activeTitle = '';
   let currentPanel = '';
-  let showingHome = true;
+  let _showingHome = true; // tracks whether we're on home or content
 
   /* ── DOM refs ─────────────────────────────────────────────── */
   const tabStrip = $('tabStrip'), tabCount = $('tabCount');
@@ -66,13 +64,6 @@
   }
 
   /* ── Navigation ───────────────────────────────────────────── */
-  async function navigate(url) {
-    try {
-      const id = await safeInvoke('tabs:getActiveId');
-      if (!id) { console.warn('navigate: no active tab id'); return; }
-      await safeInvoke('tabs:navigate', id, url);
-    } catch (e) { console.error('navigate error', e); }
-  }
   function normalize(v) {
     const s = v.trim();
     if (!s) return '';
@@ -80,6 +71,14 @@
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^about:/i.test(s) || /^data:/i.test(s)) return s;
     if (!/\s/.test(s) && /^[\w-]+(\.[\w-]+)+/.test(s)) return 'https://' + s;
     return 'https://www.google.com/search?q=' + encodeURIComponent(s);
+  }
+  async function navigate(url) {
+    try {
+      // Use activeId directly if we know it, otherwise fetch
+      const id = activeId || await safeInvoke('tabs:getActiveId');
+      if (!id) { console.warn('navigate: no active tab'); return; }
+      await safeInvoke('tabs:navigate', id, url);
+    } catch (e) { console.error('navigate error', e); }
   }
 
   /* ── Tab strip ────────────────────────────────────────────── */
@@ -92,38 +91,51 @@
         '<span class="tc-favicon">' + (tab.loading ? '⟳' : favicon(tab.url)) + '</span>' +
         '<span class="tc-title">' + (tab.title || 'New Tab') + '</span>' +
         '<span class="tc-close">✕</span>';
-      el.querySelector('.tc-close').addEventListener('click', e => { e.stopPropagation(); safeInvoke('tabs:close', tab.id); });
-      el.addEventListener('click', () => safeInvoke('tabs:setActive', tab.id));
+      el.querySelector('.tc-close').addEventListener('click', e => {
+        e.stopPropagation();
+        safeInvoke('tabs:close', tab.id);
+      });
+      el.addEventListener('click', () => {
+        if (tab.id !== activeId) safeInvoke('tabs:setActive', tab.id);
+      });
       tabStrip.appendChild(el);
     }
+    // Add new-tab button at the end
+    const addBtn = document.createElement('div');
+    addBtn.className = 'tab-chip tc-add';
+    addBtn.innerHTML = '<span class="tc-plus">+</span>';
+    addBtn.addEventListener('click', () => safeInvoke('tabs:create', {}));
+    tabStrip.appendChild(addBtn);
     if (tabCount) tabCount.textContent = allTabs.length || 1;
   }
 
-  /* ── View sync ────────────────────────────────────────────── */
+  /* ── View sync — only sends IPC when home/content state changes ── */
   async function syncView() {
     const hasUrl = !!activeUrl;
+    const wasHome = _showingHome;
+    _showingHome = !hasUrl;
+
     if (hasUrl) {
       homeEl.classList.add('hidden');
       urlBar.style.display = 'flex';
       urlBarText.textContent = activeTitle || activeUrl;
-      showingHome = false;
-      // Tell main to show the WebContentsView
-      await safeInvoke('tabs:showContent');
+      urlEditBar.classList.add('hidden');
+      // Tell main to show the WebContentsView (only on transition)
+      if (wasHome) await safeInvoke('tabs:showContent');
     } else {
       homeEl.classList.remove('hidden');
       urlBar.style.display = 'none';
-      showingHome = true;
-      // Tell main to hide the WebContentsView (don't block home search)
-      await safeInvoke('tabs:showHome');
+      urlEditBar.classList.add('hidden');
+      // Tell main to hide the WebContentsView (only on transition)
+      if (!wasHome) await safeInvoke('tabs:showHome');
     }
-    urlEditBar.classList.add('hidden');
   }
 
-  function showHome() {
+  function enterHome() {
+    _showingHome = true;
     homeEl.classList.remove('hidden');
     urlBar.style.display = 'none';
     urlEditBar.classList.add('hidden');
-    showingHome = true;
     safeInvoke('tabs:showHome');
     setTimeout(() => homeInput.focus(), 50);
   }
@@ -155,25 +167,21 @@
   /* ── Home search ──────────────────────────────────────────── */
   homeInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
-      const url = normalize(homeInput.value.trim());
+      e.preventDefault();
+      const val = homeInput.value.trim();
+      if (!val) return;
+      const url = normalize(val);
       if (url) {
-        navigate(url);
         homeInput.value = '';
         homeInput.blur();
+        navigate(url);
       }
     }
-    if (e.key === 'Escape') {
-      homeInput.blur();
-    }
+    if (e.key === 'Escape') homeInput.blur();
     e.stopPropagation();
   });
-
-  // When home screen is clicked, focus the search input
   homeEl.addEventListener('click', e => {
-    // Only focus if clicking on the background (not already focused input)
-    if (e.target !== homeInput) {
-      setTimeout(() => homeInput.focus(), 20);
-    }
+    if (e.target !== homeInput) setTimeout(() => homeInput.focus(), 20);
   });
 
   /* ── Menu ─────────────────────────────────────────────────── */
@@ -284,29 +292,25 @@
     const sec = title => { const el = document.createElement('div'); el.className = 'sec-title'; el.textContent = title; return el; };
     const item = (label, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + label + '</label>'; el.appendChild(ctrl); return el; };
 
-    // Language
     panelBody.appendChild(sec(t('settings.language')));
     const sel = document.createElement('select'); sel.className = 'setting-sel';
     (avail || []).forEach(loc => { const o = document.createElement('option'); o.value = loc; o.textContent = loc.toUpperCase(); if (loc === cfg.language) o.selected = true; sel.appendChild(o); });
     sel.addEventListener('change', async () => { await safeInvoke('settings:set', 'language', sel.value); await initI18n(); applyI18n(); toast('Language: ' + sel.value); });
     panelBody.appendChild(item(t('settings.language'), sel));
 
-    // Search engine
     panelBody.appendChild(sec(t('settings.searchEngine')));
     const engines = { google: 'Google', duckduckgo: 'DuckDuckGo', bing: 'Bing' };
     const engSel = document.createElement('select'); engSel.className = 'setting-sel';
     Object.entries(engines).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.searchEngine) o.selected = true; engSel.appendChild(o); });
-    engSel.addEventListener('change', () => { safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search engine: ' + engines[engSel.value]); });
+    engSel.addEventListener('change', () => { safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search: ' + engines[engSel.value]); });
     panelBody.appendChild(item(t('settings.searchEngine'), engSel));
 
-    // Adblock
     panelBody.appendChild(sec(t('settings.adblocking')));
     const abSw = document.createElement('div');
     abSw.className = 'switch' + (cfg.adblock?.enabled ? ' on' : '');
     abSw.addEventListener('click', () => { abSw.classList.toggle('on'); safeInvoke('settings:set', 'adblock', { ...cfg.adblock, enabled: abSw.classList.contains('on') }); toast(abSw.classList.contains('on') ? 'Ad blocking: ON' : 'Ad blocking: OFF'); });
     panelBody.appendChild(item(t('settings.adblockEnabled'), abSw));
 
-    // Clear data
     panelBody.appendChild(sec(t('settings.clearData')));
     const clrBtn = document.createElement('button'); clrBtn.className = 'btn'; clrBtn.textContent = t('settings.clearHistory');
     clrBtn.addEventListener('click', async () => { if (confirm(t('dialog.clearHistory'))) { await safeInvoke('history:clear'); toast('History cleared'); } });
@@ -331,27 +335,16 @@
   $('navBack').addEventListener('click', async () => {
     const id = activeId || await safeInvoke('tabs:getActiveId');
     if (!id) return;
-    try { await safeInvoke('tabs:goBack', id); } catch (e) { console.error('goBack failed', e); toast('Cannot go back'); }
+    try { await safeInvoke('tabs:goBack', id); } catch (e) { console.error('goBack', e); toast('Cannot go back'); }
   });
   $('navForward').addEventListener('click', async () => {
     const id = activeId || await safeInvoke('tabs:getActiveId');
     if (!id) return;
-    try { await safeInvoke('tabs:goForward', id); } catch (e) { console.error('goForward failed', e); toast('Cannot go forward'); }
+    try { await safeInvoke('tabs:goForward', id); } catch (e) { console.error('goForward', e); toast('Cannot go forward'); }
   });
-  $('navHome').addEventListener('click', () => {
-    showHome();
-  });
-  $('navTabs').addEventListener('click', async () => {
-    try {
-      const tabs = await safeInvoke('tabs:getAll');
-      if (Array.isArray(tabs) && tabs.length > 1) {
-        const idx = (tabs.findIndex(t => t.id === activeId) + 1) % tabs.length;
-        await safeInvoke('tabs:setActive', tabs[idx].id);
-      } else {
-        await safeInvoke('tabs:create', {});
-      }
-    } catch (e) { console.error('tabs cycle', e); }
-  });
+  $('navHome').addEventListener('click', () => enterHome());
+  // Tab button: ALWAYS creates a new tab (Chrome behavior)
+  $('navTabs').addEventListener('click', () => safeInvoke('tabs:create', {}));
   $('navMenu').addEventListener('click', openMenu);
 
   // Menu footer
@@ -372,19 +365,16 @@
   $('btnMinimize').addEventListener('click', async () => { try { await safeInvoke('window:minimize'); } catch {} });
   $('btnMaximize').addEventListener('click', async () => { try { await safeInvoke('window:maximize'); } catch {} });
 
-  // Keyboard shortcuts (renderer side)
+  // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     const m = e.ctrlKey || e.metaKey;
     if (m && e.key === 't') { e.preventDefault(); safeInvoke('tabs:create', {}); }
     if (m && e.key === 'l') { e.preventDefault(); openUrlEdit(); }
     if (m && e.key === 'w') { e.preventDefault(); if (activeId) safeInvoke('tabs:close', activeId); }
-    if (e.key === 'Escape') {
-      closeMenu();
-      closePanel();
-    }
+    if (e.key === 'Escape') { closeMenu(); closePanel(); }
   });
 
-  // IPC from main process
+  /* ── IPC from main process ────────────────────────────────── */
   api.on('tabs:changed', (tabs, aid, url, title) => {
     allTabs = Array.isArray(tabs) ? tabs : [];
     activeId = aid || '';
@@ -404,20 +394,24 @@
     await initI18n();
     applyI18n();
 
+    // Fetch initial tab state
     try {
       const tabs = await safeInvoke('tabs:getAll');
       const aid = await safeInvoke('tabs:getActiveId');
-      if (Array.isArray(tabs)) { allTabs = tabs; }
+      if (Array.isArray(tabs)) allTabs = tabs;
       if (aid) activeId = aid;
     } catch (e) { console.error('init tabs error', e); }
 
     renderTabs();
-    await syncView();
 
-    // Show home + focus search on startup
-    showingHome = true;
+    // Start on home screen
+    _showingHome = true;
     homeEl.classList.remove('hidden');
     urlBar.style.display = 'none';
+    urlEditBar.classList.add('hidden');
+    // Tell main to hide the view
+    safeInvoke('tabs:showHome');
+
     setTimeout(() => homeInput.focus(), 100);
   })();
 })();
