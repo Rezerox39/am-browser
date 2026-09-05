@@ -36,8 +36,15 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.am.browser');
 }
 
+// Catch all unhandled errors so the app never silently dies.
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  logger.error('main', 'Uncaught exception', { error: err.message, stack: err.stack });
+});
+
 // Everything that touches session.defaultSession MUST run after app is ready.
 app.whenReady().then(() => {
+  try {
   // Security hardening (accesses session.defaultSession)
   security.harden();
 
@@ -52,6 +59,10 @@ app.whenReady().then(() => {
   downloadsManager.setWindow(win);
   ipcHandler.register(win);
   tabsManager.init({ window: win, url: cfg.homePage === 'start' ? '' : cfg.homePage });
+  } catch (err) {
+    console.error('Error during startup:', err);
+    logger.error('main', 'Startup error', { error: err.message });
+  }
 });
 
 // macOS: re-create window when dock icon clicked
