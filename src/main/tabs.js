@@ -481,42 +481,115 @@ function createMenuOverlay() {
   }
 }
 
+// Re-adding an already-attached child moves it to the END of the view stack,
+// i.e. the TOPMOST paint/input layer. The menu is added once at creation, but
+// tab/search views can be added or re-added later, which reshuffles native
+// stacking. This helper restores the guaranteed order every time:
+//   content/page views  (bottom)
+//   menuView
+//   pillView            (topmost)
+function ensureMenuAboveContent() {
+  if (!chromeWin || chromeWin.isDestroyed() || !menuView) return
+
+  try {
+    chromeWin.contentView.addChildView(menuView)
+
+    // Keep the pill above the menu.
+    if (pillView && !pillView.webContents.isDestroyed()) {
+      chromeWin.contentView.addChildView(pillView)
+    }
+  } catch (e) {
+    logger.warn('tabs', 'Failed to restore overlay stack', {
+      error: e.message,
+    })
+  }
+}
+
 function openMenuOverlay() {
   if (menuOpen || !menuView || !chromeWin || chromeWin.isDestroyed()) return
+
   menuOpen = true
   _contentHidden = true
+
   const active = getActiveTab()
-  if (active && active._tab && active._tab._visible) active._tab.hideForOverlay()
-  _contentHidden = true
+  if (active && active._tab && active._tab._visible) {
+    active._tab.hideForOverlay()
+  }
+
   hideActiveContent()
+
+  // Critical: restore native stacking order AFTER content is manipulated.
+  ensureMenuAboveContent()
+
   slideMenu(MENU_W)
 }
 
 function closeMenuOverlay() {
   if (!menuOpen) return
+
   menuOpen = false
   _contentHidden = false
-  slideMenu(0)
-  showActiveContent()
+
+  slideMenu(0, () => {
+    showActiveContent()
+  })
 }
 
-function slideMenu(targetWidth) {
-  if (menuSlideAnim) { clearInterval(menuSlideAnim); menuSlideAnim = null }
+function slideMenu(targetWidth, onComplete) {
+  if (menuSlideAnim) {
+    clearInterval(menuSlideAnim)
+    menuSlideAnim = null
+  }
+
   const [winW, winH] = chromeWin.getSize()
   const startX = menuView.getBounds().x
-  const targetX = targetWidth > 0 ? winW - targetWidth : winW + 100
+  const targetX = targetWidth > 0
+    ? winW - targetWidth
+    : winW + 100
+
   const startTime = Date.now()
+
   menuSlideAnim = setInterval(() => {
-    const t = Math.min(1, (Date.now() - startTime) / MENU_TRANSITION_MS)
-    const ease = 1 - Math.pow(1 - t, 3) // easeOutCubic
+    const t = Math.min(
+      1,
+      (Date.now() - startTime) / MENU_TRANSITION_MS
+    )
+
+    const ease = 1 - Math.pow(1 - t, 3)
     const x = Math.round(startX + (targetX - startX) * ease)
-    try { menuView.setBounds({ x, y: 0, width: targetWidth > 0 ? targetWidth : MENU_W, height: winH }) } catch {}
-    if (t >= 1) { clearInterval(menuSlideAnim); menuSlideAnim = null }
+
+    try {
+      menuView.setBounds({
+        x,
+        y: 0,
+        width: MENU_W,
+        height: winH,
+      })
+    } catch {}
+
+    if (t >= 1) {
+      clearInterval(menuSlideAnim)
+      menuSlideAnim = null
+
+      if (onComplete) onComplete()
+    }
   }, 16)
-  // Dim the content behind (chrome renderer) + tell menu view to toggle its DOM classes
-  const isOpen = targetWidth > 0;
-  try { chromeWin.webContents.send('menu:state', isOpen) } catch {}
-  try { if (menuView && menuView.webContents && !menuView.webContents.isDestroyed()) menuView.webContents.send('menu:state', isOpen) } catch {}
+
+  const isOpen = targetWidth > 0
+
+  try {
+    chromeWin.webContents.send('menu:state', isOpen)
+  } catch {}
+
+  try {
+    if (
+      menuView &&
+      menuView.webContents &&
+      !menuView.webContents.isDestroyed()
+    ) {
+      menuView.webContents.send('menu:state', isOpen)
+    }
+  } catch {}
 }
 
 function isMenuOpen() { return menuOpen }
