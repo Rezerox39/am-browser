@@ -32,7 +32,9 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .drag-region {
   -webkit-app-region: drag;
   position: fixed; top: 0; left: 0; right: 0; height: 52px;
-  z-index: 100;
+  /* Below the tab strip (90) and traffic lights (500) so clicks on
+     tabs/window controls are never swallowed by the drag region. */
+  z-index: 10;
 }
 
 /* ── macOS Traffic Lights — RIGHT side ──────────────────────── */
@@ -67,7 +69,8 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   position: fixed; top: 0; left: 12px; right: 120px; height: 52px;
   display: flex; align-items: center; gap: 2px; z-index: 90;
   overflow-x: auto; scrollbar-width: none;
-  -webkit-app-region: no-drag;
+  /* Empty strip space drags the window; the chips themselves are no-drag */
+  -webkit-app-region: drag;
 }
 .tab-strip::-webkit-scrollbar { display: none; }
 .tab-chip {
@@ -75,6 +78,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   border-radius: var(--radius-pill); color: var(--fg-muted); font-size: 12px;
   white-space: nowrap; flex-shrink: 0; max-width: 180px; cursor: pointer;
   border: 1px solid transparent; transition: all var(--transition-fast);
+  -webkit-app-region: no-drag;
 }
 .tab-chip:hover { background: rgba(255,255,255,0.04); color: var(--fg); }
 .tab-chip.active { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); color: var(--fg); }

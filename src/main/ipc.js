@@ -1,6 +1,6 @@
 'use strict';
 
-const { ipcMain, shell, clipboard } = require('electron');
+const { ipcMain, clipboard } = require('electron');
 const config = require('./config');
 const tabs = require('./tabs');
 const history = require('./history');
@@ -10,50 +10,58 @@ const adblock = require('./adblock');
 const { setLocale, getAvailable, getStrings } = require('../shared/i18n');
 const logger = require('./logger');
 
+// Idempotent registration — macOS 'activate' can re-init a window, and
+// registerChannel() throws if a channel is registered twice.
+function registerChannel(channel, fn) {
+  try { ipcMain.removeHandler(channel); } catch {}
+  ipcMain.handle(channel, fn);
+}
+
 function register(win) {
   // ── Tabs ──────────────────────────────────────────────────────
-  ipcMain.handle('tabs:getAll', () => tabs.getAll());
-  ipcMain.handle('tabs:getActiveId', () => tabs.getActiveTab()?.id || null);
-  ipcMain.handle('tabs:create', (e, opts) => {
-    const tab = tabs.create(opts);
-    return { id: tab.id };
-  });
-  ipcMain.handle('tabs:close', (e, id) => { tabs.close(id); });
-  ipcMain.handle('tabs:setActive', (e, id) => { tabs.setActive(id); });
-  ipcMain.handle('tabs:navigate', (e, id, url) => { tabs.navigate(id, url); });
-  ipcMain.handle('tabs:reload', (e, id) => { tabs.reload(id); });
-  ipcMain.handle('tabs:stop', (e, id) => { tabs.stop(id); });
-  ipcMain.handle('tabs:goBack', (e, id) => { tabs.goBack(id); });
-  ipcMain.handle('tabs:goForward', (e, id) => { tabs.goForward(id); });
-  ipcMain.handle('tabs:getCurrentUrl', () => {
+  registerChannel('tabs:getAll', () => tabs.getAll());
+  registerChannel('tabs:getActiveId', () => tabs.getActiveTab()?.id || null);
+  registerChannel('tabs:getCurrentUrl', () => {
     const t = tabs.getActiveTab();
     return t ? { url: t.url, title: t.title } : { url: '', title: '' };
   });
+  registerChannel('tabs:create', (e, opts) => {
+    const tab = tabs.create(opts);
+    return { id: tab.id };
+  });
+  registerChannel('tabs:close', (e, id) => { tabs.close(id); });
+  registerChannel('tabs:setActive', (e, id) => { tabs.setActive(id); });
+  registerChannel('tabs:navigate', (e, id, url) => { tabs.navigate(id, url); });
+  registerChannel('tabs:reload', (e, id) => { tabs.reload(id); });
+  registerChannel('tabs:stop', (e, id) => { tabs.stop(id); });
+  registerChannel('tabs:goBack', (e, id) => { tabs.goBack(id); });
+  registerChannel('tabs:goForward', (e, id) => { tabs.goForward(id); });
 
-  // ── View visibility ───────────────────────────────────────────
-  ipcMain.handle('tabs:showHome', () => { tabs.showHome(); });
-  ipcMain.handle('tabs:showContent', () => { tabs.showContent(); });
+  // ── View visibility / chrome overlay insets ───────────────────
+  registerChannel('tabs:showHome', () => { tabs.showHome(); });
+  registerChannel('tabs:showContent', () => { tabs.showContent(); });
+  registerChannel('tabs:setInset', (e, px) => { tabs.setRightInset(px); });
 
   // ── Bookmarks ─────────────────────────────────────────────────
-  ipcMain.handle('bookmarks:getAll', () => bookmarks.getAll());
-  ipcMain.handle('bookmarks:add', (e, entry) => bookmarks.add(entry));
-  ipcMain.handle('bookmarks:remove', (e, id) => { bookmarks.remove(id); });
-  ipcMain.handle('bookmarks:getByUrl', (e, url) => bookmarks.getByUrl(url));
+  registerChannel('bookmarks:getAll', () => bookmarks.getAll());
+  registerChannel('bookmarks:add', (e, entry) => bookmarks.add(entry));
+  registerChannel('bookmarks:remove', (e, id) => { bookmarks.remove(id); });
+  registerChannel('bookmarks:getByUrl', (e, url) => bookmarks.getByUrl(url));
 
   // ── History ───────────────────────────────────────────────────
-  ipcMain.handle('history:getRecent', (e, limit) => history.getRecent(limit));
-  ipcMain.handle('history:search', (e, q, limit) => history.search(q, limit));
-  ipcMain.handle('history:clear', () => { history.clear(); });
+  registerChannel('history:getRecent', (e, limit) => history.getRecent(limit));
+  registerChannel('history:search', (e, q, limit) => history.search(q, limit));
+  registerChannel('history:clear', () => { history.clear(); });
 
   // ── Downloads ─────────────────────────────────────────────────
-  ipcMain.handle('downloads:getAll', () => downloads.getAll());
-  ipcMain.handle('downloads:remove', (e, id) => { downloads.removeItem(id); });
-  ipcMain.handle('downloads:clear', () => { downloads.clearAll(); });
-  ipcMain.handle('downloads:openFolder', (e, p) => { downloads.openFolder(p); });
-  ipcMain.handle('downloads:openFile', (e, p) => { downloads.openFile(p); });
+  registerChannel('downloads:getAll', () => downloads.getAll());
+  registerChannel('downloads:remove', (e, id) => { downloads.removeItem(id); });
+  registerChannel('downloads:clear', () => { downloads.clearAll(); });
+  registerChannel('downloads:openFolder', (e, p) => { downloads.openFolder(p); });
+  registerChannel('downloads:openFile', (e, p) => { downloads.openFile(p); });
 
   // ── Settings ──────────────────────────────────────────────────
-  ipcMain.handle('settings:get', () => {
+  registerChannel('settings:get', () => {
     const cfg = config.get();
     return {
       language: cfg.language,
@@ -67,7 +75,7 @@ function register(win) {
       siteRules: cfg.siteRules || {},
     };
   });
-  ipcMain.handle('settings:set', (e, key, value) => {
+  registerChannel('settings:set', (e, key, value) => {
     config.set(key, value);
     if (key === 'adblock') adblock.reload();
     if (key === 'language') setLocale(value);
@@ -75,34 +83,40 @@ function register(win) {
   });
 
   // ── Per-site settings ─────────────────────────────────────────
-  ipcMain.handle('site:getRule', (e, host) => {
+  registerChannel('site:getRule', (e, host) => {
     const rules = config.get().siteRules || {};
     return rules[host] || {};
   });
-  ipcMain.handle('site:setRule', (e, host, rule) => {
+  registerChannel('site:setRule', (e, host, rule) => {
     config.update((d) => {
       if (!d.siteRules) d.siteRules = {};
       d.siteRules[host] = rule;
     });
+    // Apply immediately to the active tab if it matches this host
     const activeTab = tabs.getActiveTab();
-    if (activeTab && activeTab.view) {
+    const tabView = activeTab ? tabs.getTabView(activeTab.id) : null;
+    if (tabView && tabView.webContents) {
       let activeHost = '';
       try { activeHost = new URL(activeTab.url).hostname; } catch {}
       if (activeHost === host) {
-        if (rule.javascript !== undefined) activeTab.view.webContents.setJavaScriptEnabled(rule.javascript !== false);
-        if (rule.userAgent !== undefined) activeTab.view.webContents.setUserAgent(rule.userAgent || '');
+        try { tabView.webContents.setJavaScriptEnabled(rule.javascript !== false); } catch {}
+        if (rule.userAgent) { try { tabView.webContents.setUserAgent(rule.userAgent); } catch {} }
+        try {
+          if (rule.adblockEnabled !== undefined) adblock.setSiteAdblock(tabView.webContents.id, rule.adblockEnabled)
+          else adblock.removeSite(tabView.webContents.id)
+        } catch {}
       }
     }
     return true;
   });
-  ipcMain.handle('site:deleteRule', (e, host) => {
+  registerChannel('site:deleteRule', (e, host) => {
     config.update((d) => {
       if (d.siteRules) delete d.siteRules[host];
     });
     return true;
   });
-  ipcMain.handle('site:getAllRules', () => config.get().siteRules || {});
-  ipcMain.handle('site:setPermission', (e, host, perm, enabled) => {
+  registerChannel('site:getAllRules', () => config.get().siteRules || {});
+  registerChannel('site:setPermission', (e, host, perm, enabled) => {
     config.update((d) => {
       if (!d.siteRules) d.siteRules = {};
       if (!d.siteRules[host]) d.siteRules[host] = {};
@@ -113,37 +127,30 @@ function register(win) {
   });
 
   // ── Clipboard ─────────────────────────────────────────────────
-  ipcMain.handle('clipboard:copy', (e, text) => { clipboard.writeText(text); return true; });
+  registerChannel('clipboard:copy', (e, text) => { clipboard.writeText(text); return true; });
 
   // ── Window controls ───────────────────────────────────────────
-  ipcMain.handle('window:minimize', () => { win.minimize(); });
-  ipcMain.handle('window:maximize', () => {
+  registerChannel('window:minimize', () => { win.minimize(); });
+  registerChannel('window:maximize', () => {
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
-  ipcMain.handle('window:close', () => { win.close(); });
-  ipcMain.handle('window:isMaximized', () => win.isMaximized());
+  registerChannel('window:close', () => { win.close(); });
+  registerChannel('window:isMaximized', () => win.isMaximized());
 
   // ── i18n ──────────────────────────────────────────────────────
-  ipcMain.handle('i18n:getAvailable', () => getAvailable());
-  ipcMain.handle('i18n:getStrings', () => getStrings());
-  ipcMain.handle('i18n:setLocale', (e, loc) => { config.set('language', loc); setLocale(loc); return true; });
+  registerChannel('i18n:getAvailable', () => getAvailable());
+  registerChannel('i18n:getStrings', () => getStrings());
+  registerChannel('i18n:setLocale', (e, loc) => { config.set('language', loc); setLocale(loc); return true; });
 
   // ── Adblock ───────────────────────────────────────────────────
-  ipcMain.handle('adblock:getStats', () => adblock.stats());
-  ipcMain.handle('adblock:isEnabled', () => adblock.isEnabled());
+  registerChannel('adblock:getStats', () => adblock.stats());
+  registerChannel('adblock:isEnabled', () => adblock.isEnabled());
 
-  // Listen for tab state changes and forward to renderer
-  tabs.broadcast = function () {
-    const allTabs = tabs.getAll();
-    const activeTab = tabs.getActiveTab();
-    const activeId = activeTab?.id || null;
-    const activeUrl = activeTab ? activeTab.url : '';
-    const activeTitle = activeTab ? activeTab.title : '';
-    if (win && !win.webContents.isDestroyed()) {
-      win.webContents.send('tabs:changed', allTabs, activeId, activeUrl, activeTitle);
-    }
-  };
+  // ── Extensions ────────────────────────────────────────────────
+  registerChannel('extensions:getAll', () => {
+    return require('./extensions').getExtensionList();
+  });
 }
 
 module.exports = { register };

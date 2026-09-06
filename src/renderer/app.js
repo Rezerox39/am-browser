@@ -14,6 +14,7 @@
         const l = await api.invoke('i18n:getStrings');
         if (l && typeof l === 'object') i18n.s = l;
       }
+      if (cfg.searchEngine) searchEngine = cfg.searchEngine;
     } catch {}
   }
   function t(k) { return i18n.s[k] || k; }
@@ -25,6 +26,7 @@
   let allTabs = [], activeId = '', activeUrl = '', activeTitle = '';
   let currentPanel = '';
   let _showingHome = true;
+  let searchEngine = 'google';
 
   const tabStrip = $('tabStrip'), tabCount = $('tabCount');
   const urlBar = $('urlBar'), urlBarText = $('urlBarText');
@@ -45,12 +47,20 @@
   }
   async function safeInvoke(ch, ...a) { try { return await api.invoke(ch, ...a); } catch (e) { console.error('[AM] IPC:', ch, e); return undefined; } }
 
+  function searchUrl(q) {
+    const engines = {
+      google: 'https://www.google.com/search?q=',
+      duckduckgo: 'https://duckduckgo.com/?q=',
+      bing: 'https://www.bing.com/search?q=',
+    };
+    return (engines[searchEngine] || engines.google) + encodeURIComponent(q);
+  }
   function normalize(v) {
     const s = v.trim(); if (!s) return '';
     if (/^am:\/\//i.test(s)) return s;
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^about:/i.test(s) || /^data:/i.test(s)) return s;
     if (!/\s/.test(s) && /^[\w-]+(\.[\w-]+)+/.test(s)) return 'https://' + s;
-    return 'https://www.google.com/search?q=' + encodeURIComponent(s);
+    return searchUrl(s);
   }
 
   async function navigate(url) {
@@ -59,11 +69,10 @@
     await safeInvoke('tabs:navigate', id, url);
   }
 
-  function syncView() {
-    const hasUrl = !!activeUrl;
-    const wasHome = _showingHome;
-    _showingHome = !hasUrl;
-    if (hasUrl) {
+  function syncView(mode) {
+    const contentMode = mode === 'content';
+    _showingHome = !contentMode;
+    if (contentMode) {
       homeEl.classList.add('hidden');
       urlBar.style.display = 'flex';
       urlBarText.textContent = activeTitle || activeUrl;
@@ -81,7 +90,8 @@
     homeEl.classList.remove('hidden');
     urlBar.style.display = 'none';
     urlEditBar.classList.add('hidden');
-    
+    // Hide the WebContentsView so the home screen is not covered by the page
+    safeInvoke('tabs:showHome');
     setTimeout(() => homeInput.focus(), 50);
   }
 
@@ -145,6 +155,7 @@
     { label: 'Downloads', icon: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>' },
     { label: 'Refresh', icon: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>' },
     { label: 'Settings', icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>' },
+    { label: 'Site Settings', icon: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>' },
   ];
   function buildMenu() {
     sideMenuGrid.innerHTML = '';
@@ -164,18 +175,21 @@
     else if (action === 'Downloads') openPanel('downloads', 'Downloads');
     else if (action === 'Refresh') { if (activeId) safeInvoke('tabs:reload', activeId); }
     else if (action === 'Settings') openPanel('settings', 'Settings');
+    else if (action === 'Site Settings') openPanel('siteSettings', 'Site Settings');
   }
-  function openMenu() { buildMenu(); menuBackdrop.classList.add('open'); sideMenu.classList.add('open'); }
-  function closeMenu() { menuBackdrop.classList.remove('open'); sideMenu.classList.remove('open'); }
+  const MENU_WIDTH = 340;
+  const PANEL_WIDTH = 420;
+  function openMenu() { buildMenu(); menuBackdrop.classList.add('open'); sideMenu.classList.add('open'); safeInvoke('tabs:setInset', MENU_WIDTH); }
+  function closeMenu() { menuBackdrop.classList.remove('open'); sideMenu.classList.remove('open'); safeInvoke('tabs:setInset', 0); }
 
   function openPanel(type, title) {
     panelTitle.textContent = title; panelAction.innerHTML = '';
     panelSearch.classList.add('hidden'); panelSearch.value = '';
     if (type === 'history') panelSearch.classList.remove('hidden');
     panelBackdrop.classList.add('open'); panel.classList.add('open');
-    currentPanel = type; closeMenu(); loadPanel();
+    currentPanel = type; closeMenu(); safeInvoke('tabs:setInset', PANEL_WIDTH); loadPanel();
   }
-  function closePanel() { panelBackdrop.classList.remove('open'); panel.classList.remove('open'); currentPanel = ''; }
+  function closePanel() { panelBackdrop.classList.remove('open'); panel.classList.remove('open'); currentPanel = ''; safeInvoke('tabs:setInset', 0); }
   async function loadPanel() {
     if (currentPanel === 'history') return renderHistory();
     if (currentPanel === 'bookmarks') return renderBookmarks();
@@ -216,7 +230,7 @@
     panelBody.appendChild(sec('Search Engine'));
     const engSel = document.createElement('select'); engSel.className = 'setting-sel';
     [{k:'google',v:'Google'},{k:'duckduckgo',v:'DuckDuckGo'},{k:'bing',v:'Bing'}].forEach(({k,v}) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.searchEngine) o.selected = true; engSel.appendChild(o); });
-    engSel.addEventListener('change', () => { safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search: ' + engSel.value); });
+    engSel.addEventListener('change', () => { searchEngine = engSel.value; safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search: ' + engSel.value); });
     panelBody.appendChild(item('Search Engine', engSel));
     panelBody.appendChild(sec('Ad Blocking'));
     const abSw = document.createElement('div'); abSw.className = 'switch' + (cfg.adblock?.enabled ? ' on' : '');
@@ -240,6 +254,13 @@
     for (const [lbl, rk] of [['Ad Blocking', 'adblockEnabled'], ['JavaScript', 'javascript'], ['Pop-ups', 'popups']]) {
       panelBody.appendChild(row(lbl, sw(rule[rk] || false, v => { rule[rk] = v; safeInvoke('site:setRule', host, rule); toast('Saved'); })));
     }
+    const uaInput = document.createElement('input');
+    uaInput.className = 'setting-input';
+    uaInput.type = 'text';
+    uaInput.placeholder = 'Custom user agent (optional)';
+    uaInput.value = rule.userAgent || '';
+    uaInput.addEventListener('change', () => { rule.userAgent = uaInput.value.trim() || ''; safeInvoke('site:setRule', host, rule); toast('Saved'); });
+    panelBody.appendChild(row('User Agent', uaInput));
   }
 
   $('navBack').addEventListener('click', async () => { const id = activeId || await safeInvoke('tabs:getActiveId'); if (id) safeInvoke('tabs:goBack', id); });
@@ -267,13 +288,13 @@
     if (e.key === 'Escape') { closeMenu(); closePanel(); }
   });
 
-  api.on('tabs:changed', (tabs, aid, url, title) => {
+  api.on('tabs:changed', (tabs, aid, url, title, mode) => {
     allTabs = Array.isArray(tabs) ? tabs : [];
     activeId = aid || '';
     activeUrl = url || '';
     activeTitle = title || '';
     renderTabs();
-    syncView();
+    syncView(mode || (url ? 'content' : 'home'));
   });
   api.on('tabs:focusAddressBar', () => openUrlEdit());
   api.on('window:maximized', isMax => {

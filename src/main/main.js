@@ -9,6 +9,7 @@ const adblockService = require('./adblock');
 const downloadsManager = require('./downloads');
 const ipcHandler = require('./ipc');
 const tabsManager = require('./tabs');
+const extensionsManager = require('./extensions');
 const logger = require('./logger');
 const { setLocale } = require('../shared/i18n');
 
@@ -31,8 +32,6 @@ let gotLock = false;
 try { gotLock = app.requestSingleInstanceLock(); } catch {}
 
 if (!gotLock) {
-  // Best-effort focus of the existing instance, then continue anyway
-  // (the existing instance may be a zombie from an earlier crash).
   logger.warn('main', 'Single instance lock not acquired — proceeding anyway');
 }
 
@@ -53,8 +52,11 @@ if (process.platform === 'win32') {
   try { app.setAppUserModelId('com.am.browser'); } catch {}
 }
 
+// Register privileged schemes before app is ready (required for extensions)
+extensionsManager.announceSchemes();
+
 // Everything that touches session.defaultSession MUST run after app is ready.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     // Security hardening (accesses session.defaultSession)
     security.harden();
@@ -70,6 +72,14 @@ app.whenReady().then(() => {
     downloadsManager.setWindow(win);
     ipcHandler.register(win);
     tabsManager.init({ window: win, url: cfg.homePage === 'start' ? '' : cfg.homePage });
+
+    // Initialize extension support
+    try {
+      await extensionsManager.init(win);
+      extensionsManager.wireContextMenu();
+    } catch (e) {
+      logger.error('extensions', 'Failed to init extensions', { error: e.message });
+    }
 
     logger.info('main', 'App startup complete');
   } catch (err) {

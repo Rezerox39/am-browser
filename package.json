@@ -1,13 +1,14 @@
 {
   "name": "am-browser",
-  "version": "1.10.0",
-  "description": "AM \u2014 a minimal, fast Windows browser with ad blocking and per-site control.",
+  "version": "1.12.0",
+  "description": "AM — a minimal, fast Windows browser with ad blocking and per-site control.",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
     "lint": "node scripts/check.js",
-    "build:win": "electron-builder --win portable"
+    "build:win": "electron-builder --win portable",
+    "smoke": "electron scripts/smoke.js"
   },
   "engines": {
     "node": ">=18"
@@ -23,6 +24,7 @@
       "output": "dist"
     },
     "files": [
+      "extensions/**/*",
       "src/**/*",
       "assets/**/*"
     ],
@@ -35,5 +37,10 @@
     }
   },
   "author": "AM Browser Project",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "electron-chrome-context-menu": "^1.1.0",
+    "electron-chrome-extensions": "^3.10.1",
+    "electron-chrome-web-store": "^0.13.0"
+  }
 }

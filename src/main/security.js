@@ -9,7 +9,7 @@ function harden() {
     contents.on('will-navigate', (event, url) => {
       try {
         const scheme = new URL(url).protocol;
-        if (scheme !== 'https:' && scheme !== 'http:' && scheme !== 'am:' && scheme !== 'file:' && scheme !== 'about:' && scheme !== 'data:') {
+        if (scheme !== 'https:' && scheme !== 'http:' && scheme !== 'am:' && scheme !== 'file:' && scheme !== 'about:' && scheme !== 'data:' && scheme !== 'chrome-extension:' && scheme !== 'chrome:') {
           event.preventDefault();
           logger.warn('security', 'Blocked navigation to dangerous scheme', { url, scheme });
         }

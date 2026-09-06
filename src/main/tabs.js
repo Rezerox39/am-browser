@@ -1,20 +1,23 @@
 'use strict';
 
-const { BrowserWindow } = require('electron');
+const { WebContentsView } = require('electron');
 const crypto = require('crypto');
-const path = require('path');
 const config = require('./config');
 const logger = require('./logger');
 const history = require('./history');
 
-function genId() {
-  return 'tab_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
-}
+// Chrome heights (must match CSS): tab strip ~52px + url bar ~32px + margins.
+// The view lives BELOW all chrome so it never covers clickable UI.
+const TOOLBAR_Y = 84;   // vertical offset where the content view starts
+const PADDING = 8;      // side/bottom padding
+const BOTTOM_RESERVE = 76; // leave room for the bottom navigation pill
 
 let tabs = [];
 let activeTabId = null;
 let chromeWin = null;
-let activeTabWin = null;
+let uiMode = 'home'; // 'home' | 'content' — what the chrome UI is showing
+let rightInset = 0; // px reserved for slide-in panels (menu/settings)
+let lifecycle = { onCreated: () => {}, onSelected: () => {}, onDestroyed: () => {} };
 
 function setChromeWindow(win) { chromeWin = win; }
 
@@ -29,308 +32,387 @@ function getAll() {
   }));
 }
 
-/* ── Tab window geometry (matches chrome layout) ────────────── */
-function getContentBounds() {
-  if (!chromeWin) return { x: 0, y: 0, width: 1280, height: 800 };
-  const [w, h] = chromeWin.getSize();
-  return { x: 12, y: 86, width: Math.max(200, w - 24), height: Math.max(200, h - 140) };
+/* ── Tab class: WebContentsView stays attached, toggled with setVisible ── */
+class Tab {
+  constructor(parentWindow, opts = {}) {
+    this.invalidateLayout = this.invalidateLayout.bind(this)
+
+    const wcvOpts = { ...opts }
+    if (wcvOpts.hasOwnProperty('webContents') && !wcvOpts.webContents) delete wcvOpts.webContents
+    if (wcvOpts.hasOwnProperty('webPreferences') && !wcvOpts.webPreferences) delete wcvOpts.webPreferences
+
+    this.view = new WebContentsView(wcvOpts)
+    this.id = this.view.webContents.id
+    this.window = parentWindow
+    this.webContents = this.view.webContents
+    this._visible = false
+
+    // Attach ONCE — never remove from contentView. Visibility is toggled with
+    // setVisible(), following the electron-browser-shell architecture, so the
+    // chrome DOM (tab strip, toolbar, panels) is never blocked by the view.
+    this.window.contentView.addChildView(this.view)
+    this.view.setVisible(false)
+    this.invalidateLayout()
+
+    this.setupEvents()
+  }
+
+  setupEvents() {
+    const wc = this.webContents
+
+    wc.on('did-navigate', (e, url) => {
+      if (this._record) {
+        this._record.url = url
+        history.add({ url, title: this._record.title || url })
+      }
+      broadcast()
+    })
+    wc.on('did-navigate-in-page', (e, url) => {
+      if (this._record) {
+        this._record.url = url
+        history.add({ url, title: this._record.title || url })
+      }
+      broadcast()
+    })
+    wc.on('page-title-updated', (e, title) => {
+      if (this._record) this._record.title = title
+      broadcast()
+    })
+    wc.on('page-favicon-updated', (e, favicons) => {
+      if (this._record && favicons && favicons.length > 0) this._record.favicon = favicons[0]
+    })
+    wc.on('did-start-loading', () => {
+      if (this._record) this._record.loading = true
+      broadcast()
+    })
+    wc.on('did-stop-loading', () => {
+      if (this._record) this._record.loading = false
+      broadcast()
+    })
+    wc.on('did-fail-load', (e, errorCode, errorDesc, validatedUrl) => {
+      if (this._record) {
+        this._record.loading = false
+        this._record.title = 'Error — ' + (errorDesc || errorCode)
+      }
+      logger.warn('tabs', 'Page failed to load', { url: validatedUrl, errorDesc })
+      broadcast()
+    })
+
+    wc.setWindowOpenHandler(({ url }) => {
+      if (!url || url.startsWith('about:') || url.startsWith('javascript:')) return { action: 'deny' }
+      const rec = create({ url })
+      select(rec.id)
+      return { action: 'deny' }
+    })
+
+    wc.on('before-input-event', (event, input) => {
+      const mods = input.control || input.meta
+      if (!mods) return
+      if (input.key === 't') {
+        event.preventDefault()
+        create()
+      } else if (input.key === 'w') {
+        event.preventDefault()
+        if (this._record) close(this._record.id)
+      } else if (input.key === 'l') {
+        event.preventDefault()
+        if (chromeWin && !chromeWin.webContents.isDestroyed()) {
+          chromeWin.webContents.send('tabs:focusAddressBar')
+        }
+      } else if (input.key === 'r' && !input.shift) {
+        event.preventDefault()
+        if (this._record) reload(this._record.id)
+      } else if (input.key === 'd') {
+        event.preventDefault()
+        const bookmarks = require('./bookmarks')
+        const existing = bookmarks.getByUrl(this._record ? this._record.url : '')
+        if (existing) bookmarks.remove(existing.id)
+        else bookmarks.add({ url: this._record.url, title: this._record.title, favicon: this._record.favicon })
+        broadcast()
+      }
+    })
+  }
+
+  loadURL(url) {
+    if (this._record) {
+      this._record.url = url
+      this._record.loading = true
+    }
+    // Apply per-site settings
+    let host = ''
+    try { host = new URL(url).hostname } catch {}
+    const rule = (config.get().siteRules || {})[host] || {}
+    try { this.webContents.setJavaScriptEnabled(rule.javascript !== false); } catch {}
+    if (rule.userAgent) {
+      try { this.webContents.setUserAgent(rule.userAgent); } catch {}
+    } // else keep the session default UA
+    // Per-site adblock override (falls back to the global default otherwise)
+    try {
+      const adblock = require('./adblock')
+      if (rule.adblockEnabled !== undefined) adblock.setSiteAdblock(this.webContents.id, rule.adblockEnabled)
+      else adblock.removeSite(this.webContents.id)
+    } catch {}
+
+    broadcast()
+    return this.webContents.loadURL(url).catch((err) => {
+      logger.warn('tabs', 'loadURL failed', { url, error: err.message })
+    })
+  }
+
+  show() {
+    this.invalidateLayout()
+    this.startResizeListener()
+    this.view.setVisible(true)
+    this._visible = true
+  }
+
+  hide() {
+    this.stopResizeListener()
+    this.view.setVisible(false)
+    this._visible = false
+  }
+
+  reload() {
+    this.webContents.reload()
+  }
+
+  canGoBack() {
+    return this.webContents.canGoBack()
+  }
+
+  canGoForward() {
+    return this.webContents.canGoForward()
+  }
+
+  goBack() {
+    if (this.webContents.canGoBack()) this.webContents.goBack()
+  }
+
+  goForward() {
+    if (this.webContents.canGoForward()) this.webContents.goForward()
+  }
+
+  stop() {
+    this.webContents.stop()
+    if (this._record) this._record.loading = false
+    broadcast()
+  }
+
+  invalidateLayout() {
+    const [width, height] = this.window.getSize()
+    // View fills the area BELOW the chrome toolbar and above the bottom nav.
+    // A right-side inset keeps slide-in panels (menu/settings) clickable.
+    const w = Math.max(200, width - PADDING * 2 - rightInset)
+    this.view.setBounds({
+      x: PADDING,
+      y: TOOLBAR_Y,
+      width: w,
+      height: Math.max(200, height - TOOLBAR_Y - BOTTOM_RESERVE),
+    })
+  }
+
+  startResizeListener() {
+    this.stopResizeListener()
+    this.window.on('resize', this.invalidateLayout)
+  }
+  stopResizeListener() {
+    this.window.off('resize', this.invalidateLayout)
+  }
+
+  destroy() {
+    this.hide()
+    try { this.window.contentView.removeChildView(this.view) } catch {}
+    if (!this.webContents.isDestroyed()) {
+      this.webContents.destroy()
+    }
+    this.view = undefined
+    this.webContents = undefined
+  }
 }
 
-/* ── Tab creation ──────────────────────────────────────────── */
+/* ── Tab manager ───────────────────────────────────────────── */
 function create(opts = {}) {
-  const tab = {
-    id: genId(),
+  const tab = new Tab(chromeWin, {
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      spellcheck: true,
+    },
+  })
+
+  const record = {
+    id: generateRecordId(),
     url: opts.url || '',
     title: opts.title || '',
     favicon: '',
     loading: false,
-    win: null,
-    history: opts.url ? [opts.url] : [],
-    historyIndex: opts.url ? 0 : -1,
-  };
-  tabs.push(tab);
+    _tab: tab,
+  }
+  tab._record = record
+  tabs.push(record)
 
-  if (chromeWin) {
-    const bounds = getContentBounds();
-    const tabWin = new BrowserWindow({
-      parent: chromeWin,
-      x: chromeWin.getPosition()[0] + bounds.x,
-      y: chromeWin.getPosition()[1] + bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-      frame: false,
-      show: false,
-      backgroundColor: '#000000',
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-        spellcheck: true,
-      },
-    });
+  // Notify the extension manager BEFORE the view loads anything so content
+  // scripts can be injected into this tab.
+  try { lifecycle.onCreated(record) } catch (e) { logger.warn('tabs', 'onCreated hook failed', { error: e.message }) }
 
-    // Navigation events
-    tabWin.webContents.on('did-navigate', (e, url) => {
-      tab.url = url;
-      // Update history (skip if it's just an in-page navigation we already tracked)
-      if (tab.historyIndex < 0 || tab.history[tab.historyIndex] !== url) {
-        // Truncate forward history if we navigated to a new URL
-        tab.history = tab.history.slice(0, tab.historyIndex + 1);
-        tab.history.push(url);
-        tab.historyIndex = tab.history.length - 1;
-      }
-      history.add({ url, title: tab.title || url });
-      broadcast();
-    });
-    tabWin.webContents.on('did-navigate-in-page', (e, url) => {
-      tab.url = url;
-      if (tab.historyIndex < 0 || tab.history[tab.historyIndex] !== url) {
-        tab.history = tab.history.slice(0, tab.historyIndex + 1);
-        tab.history.push(url);
-        tab.historyIndex = tab.history.length - 1;
-      }
-      history.add({ url, title: tab.title || url });
-      broadcast();
-    });
-    tabWin.webContents.on('page-title-updated', (e, title) => {
-      tab.title = title;
-      broadcast();
-    });
-    tabWin.webContents.on('page-favicon-updated', (e, favicons) => {
-      if (favicons && favicons.length > 0) tab.favicon = favicons[0];
-    });
-    tabWin.webContents.on('did-start-loading', () => { tab.loading = true; broadcast(); });
-    tabWin.webContents.on('did-stop-loading', () => { tab.loading = false; broadcast(); });
-    tabWin.webContents.on('did-fail-load', (e, errorCode, errorDesc, validatedUrl) => {
-      tab.loading = false;
-      tab.title = 'Error — ' + (errorDesc || errorCode);
-      logger.warn('tabs', 'Page failed to load', { url: validatedUrl, errorDesc });
-      broadcast();
-    });
-
-    // Popup handler
-    tabWin.webContents.setWindowOpenHandler(({ url }) => {
-      if (!url || url.startsWith('about:') || url.startsWith('javascript:')) return { action: 'deny' };
-      create({ url });
-      return { action: 'deny' };
-    });
-
-    // Keyboard shortcuts inside web content
-    tabWin.webContents.on('before-input-event', (event, input) => {
-      const mods = input.control || input.meta;
-      if (!mods) return;
-      if (input.key === 't') { event.preventDefault(); create(); }
-      else if (input.key === 'w') { event.preventDefault(); close(tab.id); }
-      else if (input.key === 'l') {
-        event.preventDefault();
-        if (chromeWin && !chromeWin.webContents.isDestroyed()) {
-          chromeWin.webContents.send('tabs:focusAddressBar');
-        }
-      } else if (input.key === 'r' && !input.shift) { event.preventDefault(); reload(tab.id); }
-      else if (input.key === 'd') {
-        event.preventDefault();
-        const bookmarks = require('./bookmarks');
-        const existing = bookmarks.getByUrl(tab.url);
-        if (existing) bookmarks.remove(existing.id);
-        else bookmarks.add({ url: tab.url, title: tab.title, favicon: tab.favicon });
-        broadcast();
-      }
-    });
-
-    // Apply site-specific settings before loading
-    if (tab.url) {
-      let parsedHost = '';
-      try { parsedHost = new URL(tab.url).hostname; } catch {}
-      const siteRules = config.get().siteRules || {};
-      const rule = siteRules[parsedHost] || {};
-      if (rule.javascript === false) tabWin.webContents.setJavaScriptEnabled(false);
-      if (rule.userAgent) tabWin.webContents.setUserAgent(rule.userAgent);
-
-      tabWin.webContents.loadURL(tab.url).catch((err) => {
-        logger.warn('tabs', 'Failed to load URL', { url: tab.url, error: err.message });
-      });
-    }
-
-    tab.win = tabWin;
+  if (opts.url) {
+    tab.loadURL(opts.url)
+  } else {
+    record.title = 'New Tab'
   }
 
-  setActive(tab.id);
-  broadcast();
-  logger.info('tabs', 'Tab created', { id: tab.id, url: tab.url || '(blank)' });
-  return tab;
+  select(record.id)
+  broadcast()
+  logger.info('tabs', 'Tab created', { id: record.id, url: record.url || '(blank)' })
+  return record
 }
 
-/* ── Tab switching ─────────────────────────────────────────── */
-function setActive(tabId) {
-  const next = tabs.find((t) => t.id === tabId);
-  if (!next) return;
+function generateRecordId() {
+  return 'tab_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex')
+}
 
-  // Hide all tab windows
+function getRecord(recordId) {
+  return tabs.find((t) => t.id === recordId) || null
+}
+
+function getTabView(recordId) {
+  const rec = getRecord(recordId)
+  return rec ? rec._tab : null
+}
+
+function select(recordId) {
+  const rec = getRecord(recordId)
+  if (!rec) return
+
+  // Hide all views, then show the selected one
   for (const t of tabs) {
-    if (t.win && !t.win.isDestroyed()) {
-      t.win.hide();
-    }
+    if (t._tab && t._tab._visible) t._tab.hide()
   }
 
-  activeTabId = tabId;
+  activeTabId = recordId
 
-  // Show the active tab's window (if it has a URL loaded)
-  if (next.win && !next.win.isDestroyed() && next.url) {
-    next.win.show();
-    activeTabWin = next.win;
-    repositionActiveTab();
+  // Only show the view if there's a URL (so home stays clear)
+  if (rec._tab && rec.url) {
+    rec._tab.show()
+    uiMode = 'content'
   } else {
-    activeTabWin = null;
+    uiMode = 'home'
   }
 
-  broadcast();
+  try { lifecycle.onSelected(rec) } catch (e) { logger.warn('tabs', 'onSelected hook failed', { error: e.message }) }
+
+  broadcast()
 }
 
-function close(tabId) {
-  const idx = tabs.findIndex((t) => t.id === tabId);
-  if (idx === -1) return;
-  const tab = tabs[idx];
-  if (tab.win && !tab.win.isDestroyed()) {
-    tab.win.destroy();
-  }
-  tabs.splice(idx, 1);
+function close(recordId) {
+  const idx = tabs.findIndex((t) => t.id === recordId)
+  if (idx === -1) return
+  const rec = tabs[idx]
+  try { lifecycle.onDestroyed(rec) } catch {}
+  rec._tab.destroy()
+  tabs.splice(idx, 1)
   if (tabs.length === 0) {
-    create();
-    return;
+    create()
+    return
   }
-  if (activeTabId === tabId) {
-    const next = tabs[Math.min(idx, tabs.length - 1)];
-    setActive(next.id);
+  if (activeTabId === recordId) {
+    const next = tabs[Math.min(idx, tabs.length - 1)]
+    select(next.id)
   } else {
-    broadcast();
+    broadcast()
   }
 }
 
-/* ── Navigation ────────────────────────────────────────────── */
-function navigate(tabId, url) {
-  const tab = tabs.find((t) => t.id === tabId);
-  if (!tab) return;
-  if (!tab.win || tab.win.isDestroyed()) return;
-
-  let parsedHost = '';
-  try { parsedHost = new URL(url).hostname; } catch {}
-  const siteRules = config.get().siteRules || {};
-  const rule = siteRules[parsedHost] || {};
-  tab.win.webContents.setJavaScriptEnabled(rule.javascript !== false);
-  if (rule.userAgent) tab.win.webContents.setUserAgent(rule.userAgent);
-  else tab.win.webContents.setUserAgent('');
-
-  tab.url = url;
-  tab.loading = true;
-
-  // Ensure this tab is visible
-  setActive(tabId);
-
-  broadcast();
-
-  logger.info('tabs', 'Navigating', { tabId, url });
-  tab.win.webContents.loadURL(url).catch((err) => {
-    tab.title = 'Error — ' + (err.message || 'Failed to load');
-    tab.loading = false;
-    broadcast();
-  });
+function setActive(recordId) {
+  select(recordId)
 }
 
-function reload(tabId) {
-  const tab = tabs.find((t) => t.id === (tabId || activeTabId));
-  if (!tab || !tab.win || tab.win.isDestroyed()) return;
-  tab.loading = true;
-  broadcast();
-  tab.win.webContents.reload();
+function navigate(recordId, url) {
+  const rec = getRecord(recordId)
+  const tabView = getTabView(recordId)
+  if (!tabView) return
+  // Set URL BEFORE select() so the view actually shows
+  if (rec) rec.url = url
+  uiMode = 'content'
+  select(recordId)
+  tabView.loadURL(url)
 }
 
-function stop(tabId) {
-  const tab = tabs.find((t) => t.id === (tabId || activeTabId));
-  if (!tab || !tab.win || tab.win.isDestroyed()) return;
-  tab.win.webContents.stop();
-  tab.loading = false;
-  broadcast();
+function reload(recordId) {
+  const rec = getRecord(recordId || activeTabId)
+  if (rec) rec._tab.reload()
 }
 
-function goBack(tabId) {
-  const tab = tabs.find((t) => t.id === (tabId || activeTabId));
-  if (!tab || !tab.win || tab.win.isDestroyed()) return;
-  if (tab.historyIndex > 0) {
-    tab.historyIndex--;
-    const prevUrl = tab.history[tab.historyIndex];
-    tab.win.webContents.loadURL(prevUrl).catch(() => {});
-  }
+function stop(recordId) {
+  const rec = getRecord(recordId || activeTabId)
+  if (rec) rec._tab.stop()
 }
 
-function goForward(tabId) {
-  const tab = tabs.find((t) => t.id === (tabId || activeTabId));
-  if (!tab || !tab.win || tab.win.isDestroyed()) return;
-  if (tab.historyIndex < tab.history.length - 1) {
-    tab.historyIndex++;
-    const nextUrl = tab.history[tab.historyIndex];
-    tab.win.webContents.loadURL(nextUrl).catch(() => {});
-  }
+function goBack(recordId) {
+  const rec = getRecord(recordId || activeTabId)
+  if (rec) rec._tab.goBack()
 }
 
-/* ── Show/hide (called from renderer) ──────────────────────── */
+function goForward(recordId) {
+  const rec = getRecord(recordId || activeTabId)
+  if (rec) rec._tab.goForward()
+}
+
+/* ── Public chrome helpers (renderer lives in the chrome window) ── */
 function showHome() {
-  if (activeTabWin && !activeTabWin.isDestroyed()) {
-    activeTabWin.hide();
-    activeTabWin = null;
-  }
+  uiMode = 'home'
+  const active = getActiveTab()
+  if (active && active._tab) active._tab.hide()
+  broadcast()
 }
-
 function showContent() {
-  const active = getActiveTab();
-  if (active && active.win && !active.win.isDestroyed() && active.url) {
-    active.win.show();
-    activeTabWin = active.win;
-    repositionActiveTab();
+  const active = getActiveTab()
+  if (active && active._tab && active.url) {
+    uiMode = 'content'
+    active._tab.show()
+    broadcast()
   }
 }
-
-/* ── Reposition ────────────────────────────────────────────── */
 function repositionActiveTab() {
-  if (!activeTabWin || activeTabWin.isDestroyed() || !chromeWin) return;
-  const bounds = getContentBounds();
-  const [cx, cy] = chromeWin.getPosition();
-  try {
-    activeTabWin.setBounds({
-      x: cx + bounds.x,
-      y: cy + bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-    });
-  } catch {}
+  const active = getActiveTab()
+  if (active && active._tab) active._tab.invalidateLayout()
+}
+function setRightInset(px) {
+  rightInset = Math.max(0, Math.min(parseInt(px, 10) || 0, 600))
+  repositionActiveTab()
+}
+function setLifecycleCallbacks(cb) {
+  if (cb && typeof cb === 'object') lifecycle = { ...lifecycle, ...cb }
 }
 
 /* ── Broadcast ─────────────────────────────────────────────── */
 function broadcast() {
   if (chromeWin && !chromeWin.webContents.isDestroyed()) {
-    const active = getActiveTab();
-    chromeWin.webContents.send('tabs:changed', getAll(), active?.id || null, active?.url || '', active?.title || '');
+    const active = getActiveTab()
+    chromeWin.webContents.send('tabs:changed', getAll(), active?.id || null, active?.url || '', active?.title || '', uiMode)
   }
 }
 
 function getStateForContentsId(wcId) {
-  const tab = tabs.find((t) => t.win && !t.win.isDestroyed() && t.win.webContents.id === wcId);
-  if (!tab) return {};
-  let host = '';
-  try { host = new URL(tab.url).hostname; } catch {}
-  const siteRules = config.get().siteRules || {};
-  return { tabId: tab.id, host, rule: siteRules[host] || {} };
+  const rec = tabs.find((t) => t._tab && t._tab.webContents && t._tab.webContents.id === wcId)
+  if (!rec) return {}
+  let host = ''
+  try { host = new URL(rec.url).hostname } catch {}
+  const rule = (config.get().siteRules || {})[host] || {}
+  return { tabId: rec.id, host, rule }
 }
 
 function init(opts = {}) {
-  setChromeWindow(opts.window);
-  create(opts);
+  setChromeWindow(opts.window)
+  create(opts)
 }
 
 module.exports = {
   init, create, close, setActive, navigate, reload, stop,
-  goBack, goForward, getActiveTab, getAll, setChromeWindow,
-  getStateForContentsId, broadcast,
-  showHome, showContent, repositionActiveTab,
+  goBack, goForward, getActiveTab, getAll, getRecord, getTabView,
+  setChromeWindow, getStateForContentsId, broadcast,
+  showHome, showContent, repositionActiveTab, setRightInset, setLifecycleCallbacks,
 };
