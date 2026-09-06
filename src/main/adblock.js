@@ -53,6 +53,11 @@ function removeSite(wcId) {
   siteAdblockState.delete(wcId);
 }
 
+// Recent matches ring buffer for the am://adblock diagnostics page.
+// Stores the last 50 decisions — no sensitive data (headers, cookies, POST bodies).
+const recentMatches = [];
+const MAX_RECENT = 50;
+
 function wireSession() {
   const ses = session.defaultSession;
   ses.webRequest.onBeforeRequest(
@@ -65,6 +70,15 @@ function wireSession() {
         if (!siteAdblock) return cb({ cancel: false });
         const originUrl = details.referrer || '';
         const shouldBlock = engine.shouldBlock(url, originUrl);
+        // Structured log for diagnostics — URL, resourceType, blocked, no sensitive data
+        recentMatches.push({
+          t: Date.now(),
+          url: url.length > 120 ? url.substring(0, 117) + '...' : url,
+          type: details.resourceType,
+          wc: details.id,
+          blocked: shouldBlock,
+        });
+        if (recentMatches.length > MAX_RECENT) recentMatches.shift();
         cb({ cancel: shouldBlock });
       } catch (e) {
         logger.error('adblock', 'Filter error', { error: e.message });
@@ -73,6 +87,8 @@ function wireSession() {
     }
   );
 }
+
+function getRecentMatches() { return recentMatches; }
 
 function reload(newCfg) {
   engine.clear();
@@ -91,4 +107,4 @@ function isEnabled() {
   return config.get().adblock.enabled;
 }
 
-module.exports = { init, setSiteAdblock, getSiteAdblock, removeSite, reload, stats, isEnabled };
+module.exports = { init, setSiteAdblock, getSiteAdblock, removeSite, reload, stats, isEnabled, getRecentMatches };

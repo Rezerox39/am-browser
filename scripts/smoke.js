@@ -102,6 +102,8 @@ app.whenReady().then(async () => {
     tabs = require('../src/main/tabs');
 
     config.load();
+    const adblockMod = require('../src/main/adblock');
+    adblockMod.init();
 
     win = windowManager.create();
     ipcHandler.register(win);
@@ -302,7 +304,15 @@ app.whenReady().then(async () => {
     await clickMenu('panel-back');
     await sleep(400);
 
-    // 10. Fullscreen class + bounds: entering HTML fullscreen covers the window
+    // 10. Adblock: verify engine is wired to the correct session
+    const adblockStats = adblockMod.stats();
+    check('adblock has rules loaded', adblockStats.rules > 100, `rules=${adblockStats.rules}`);
+    const defSession = (await import('electron')).session.defaultSession;
+    const firstTab = tabs.getTabView(tabs.getActiveTab().id);
+    const tabSessionOk = firstTab && firstTab.webContents.session === defSession;
+    check('adblock session matches tab session', tabSessionOk === true);
+    const amProtocol = await rendererEval('window.location.href').catch(() => '');
+    // 11. Fullscreen class + bounds: entering HTML fullscreen covers the window
     tabs.enterFullscreen();
     await sleep(300);
     const fsClass = await rendererEval('document.body.classList.contains("am-fullscreen")');
