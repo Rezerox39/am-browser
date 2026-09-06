@@ -18,6 +18,7 @@ function init() {
   loadBuiltinLists(cfg);
   loadCustomRules(cfg);
   wireSession();
+
 }
 
 function loadBuiltinLists(cfg) {

@@ -46,6 +46,11 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   transform: translateX(calc(100% + 60px));
   transition: transform var(--transition);
   display: flex; flex-direction: column; overflow: hidden;
+  /* Anti-halo: force Skia to render rounded edges through an alpha-mask
+     shader, eliminating dark corner/edge seams over hardware surfaces
+     (same fix as the navigation pill). */
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  mask-image: radial-gradient(white, black);
 }
 #side-menu.open { transform: translateX(0); }
 
@@ -116,6 +121,8 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   transform: translateX(calc(100% + 60px));
   transition: transform var(--transition);
   display: flex; flex-direction: column; overflow: hidden;
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  mask-image: radial-gradient(white, black);
 }
 #panel.open { transform: translateX(0); }
 #panel-body { flex: 1; overflow-y: auto; }
