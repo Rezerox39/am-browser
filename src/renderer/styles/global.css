@@ -32,8 +32,6 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .drag-region {
   -webkit-app-region: drag;
   position: fixed; top: 0; left: 0; right: 0; height: 52px;
-  /* Below the tab strip (90) and traffic lights (500) so clicks on
-     tabs/window controls are never swallowed by the drag region. */
   z-index: 10;
 }
 
@@ -69,7 +67,6 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   position: fixed; top: 0; left: 12px; right: 120px; height: 52px;
   display: flex; align-items: center; gap: 2px; z-index: 90;
   overflow-x: auto; scrollbar-width: none;
-  /* Empty strip space drags the window; the chips themselves are no-drag */
   -webkit-app-region: drag;
 }
 .tab-strip::-webkit-scrollbar { display: none; }
@@ -131,144 +128,6 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .url-pill .url-input { flex: 1; height: 28px; font-size: 13px; color: var(--fg); }
 .url-pill .url-input::placeholder { color: var(--fg-dim); }
 
-/* ── Menu ───────────────────────────────────────────────────── */
-#menu-backdrop {
-  position: fixed; inset: 0; z-index: 600;
-  background: rgba(0,0,0,0.28); backdrop-filter: blur(12px) saturate(120%); -webkit-backdrop-filter: blur(12px) saturate(120%);
-  opacity: 0; pointer-events: none; transition: opacity var(--transition);
-}
-#menu-backdrop.open { opacity: 1; pointer-events: auto; }
-#side-menu {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(340px, 85vw); z-index: 700;
-  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
-  backdrop-filter: blur(24px) saturate(150%) brightness(1.05); -webkit-backdrop-filter: blur(24px) saturate(150%) brightness(1.05);
-  border-left: 1px solid rgba(255,255,255,0.08);
-  box-shadow: inset 1px 0 0 rgba(255,255,255,0.04), -8px 0 32px rgba(0,0,0,0.35);
-  transform: translateX(100%); transition: transform var(--transition);
-  display: flex; flex-direction: column; overflow: hidden;
-}
-#side-menu.open { transform: translateX(0); }
-.ph {
-  display: flex; align-items: center; padding: 14px 16px;
-  border-bottom: 1px solid var(--border); flex-shrink: 0;
-}
-.ph b { font-size: 16px; font-weight: 600; }
-.logo-text {
-  margin-right: 8px; font-size: 18px; font-weight: 800; color: var(--accent);
-}
-.menu-close-btn {
-  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-  border-radius: 8px; color: var(--fg-dim); font-size: 14px;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.menu-close-btn:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
-#side-menu-grid {
-  flex: 1; overflow-y: auto; padding: 16px 12px;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; align-content: start;
-}
-.sheet-item {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 14px 4px 10px; border-radius: var(--radius-md); color: var(--fg-muted);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.sheet-item:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
-.sheet-item svg { width: 24px; height: 24px; margin-bottom: 4px; }
-.sheet-item span { font-size: 11px; text-align: center; }
-#side-menu-footer {
-  display: flex; justify-content: space-around;
-  padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.06);
-}
-#side-menu-footer button {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  color: var(--fg-muted); font-size: 11px;
-}
-#side-menu-footer svg { width: 20px; height: 20px; }
-
-/* ── Panel ──────────────────────────────────────────────────── */
-#panel-backdrop {
-  position: fixed; inset: 0; z-index: 800;
-  background: rgba(0,0,0,0.28); backdrop-filter: blur(12px) saturate(120%); -webkit-backdrop-filter: blur(12px) saturate(120%);
-  opacity: 0; pointer-events: none; transition: opacity var(--transition);
-}
-#panel-backdrop.open { opacity: 1; pointer-events: auto; }
-#panel {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 90vw); z-index: 850;
-  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
-  backdrop-filter: blur(24px) saturate(150%) brightness(1.05); -webkit-backdrop-filter: blur(24px) saturate(150%) brightness(1.05);
-  border-left: 1px solid rgba(255,255,255,0.08);
-  box-shadow: inset 1px 0 0 rgba(255,255,255,0.04), -8px 0 32px rgba(0,0,0,0.35);
-  transform: translateX(100%); transition: transform var(--transition);
-  display: flex; flex-direction: column; overflow: hidden;
-}
-#panel.open { transform: translateX(0); }
-#panel-body { flex: 1; overflow-y: auto; }
-#panel-search {
-  width: 140px; background: #0a0a0a; border: 1px solid var(--border);
-  border-radius: 8px; padding: 5px 10px; color: var(--fg-muted); font-size: 12px;
-}
-.pi {
-  padding: 12px 16px; border-bottom: 1px solid var(--border);
-  cursor: pointer; transition: background var(--transition-fast); position: relative;
-}
-.pi:hover { background: rgba(255,255,255,0.04); }
-.pi-title { font-size: 14px; color: var(--fg); }
-.pi-url { font-size: 11px; color: var(--fg-dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pi-del {
-  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; color: var(--fg-dim); font-size: 14px; opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-.pi:hover .pi-del { opacity: 1; }
-.pi-del:hover { background: rgba(255,255,255,0.06); color: #ff6b6b; }
-.mg-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
-  font-size: 14px; transition: background var(--transition-fast);
-}
-.mg-item:hover { background: rgba(255,255,255,0.04); }
-.mg-item label { flex: 1; color: var(--fg); }
-.mg-item .sub { font-size: 12px; color: var(--fg-muted); }
-.switch {
-  width: 42px; height: 24px; border-radius: 12px; background: #333;
-  position: relative; flex-shrink: 0; cursor: pointer;
-}
-.switch::after {
-  content: ''; position: absolute; top: 3px; left: 3px;
-  width: 18px; height: 18px; border-radius: 50%; background: #fff;
-  transition: transform var(--transition-fast);
-}
-.switch.on { background: var(--accent); }
-.switch.on::after { transform: translateX(18px); }
-select.setting-sel {
-  padding: 6px 10px; background: #0a0a0a; border: 1px solid var(--border);
-  border-radius: var(--radius-md); color: var(--fg); font-size: 13px;
-}
-input.setting-input {
-  padding: 8px 12px; background: #0a0a0a; border: 1px solid var(--border);
-  border-radius: var(--radius-md); color: var(--fg); font-size: 13px; width: 100%;
-}
-textarea.setting-input { min-height: 56px; resize: vertical; font-family: inherit; }
-.sec-title {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-  color: var(--fg-dim); padding: 16px 16px 8px;
-}
-.btn {
-  display: block; width: calc(100% - 32px); margin: 10px 16px; padding: 12px;
-  text-align: center; background: #0a0a0a; border: 1px solid var(--border);
-  border-radius: var(--radius-md); color: var(--fg); font-size: 14px;
-}
-.btn:hover { background: rgba(255,255,255,0.08); }
-.dl-item { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-.dl-name { font-size: 14px; color: var(--fg); }
-.dl-meta { font-size: 11px; color: var(--fg-muted); margin-top: 3px; }
-.dl-actions { display: flex; gap: 8px; margin-top: 8px; }
-.dl-actions button {
-  padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
-  font-size: 12px; color: var(--fg-muted); transition: all var(--transition-fast);
-}
-.dl-actions button:hover { color: var(--fg); background: rgba(255,255,255,0.08); }
-
 /* ── Home screen ────────────────────────────────────────────── */
 #home {
   position: fixed; inset: 0; display: flex; flex-direction: column;
@@ -311,11 +170,6 @@ body.am-fullscreen .tab-strip,
 body.am-fullscreen .url-bar,
 body.am-fullscreen .url-edit-bar,
 body.am-fullscreen .win-controls,
-body.am-fullscreen #home,
-body.am-fullscreen #side-menu,
-body.am-fullscreen #panel,
-body.am-fullscreen #menu-backdrop,
-body.am-fullscreen #panel-backdrop,
-body.am-fullscreen #toast {
+body.am-fullscreen #home {
   display: none !important;
 }

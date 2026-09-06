@@ -19,6 +19,12 @@ let uiMode = 'home'; // 'home' | 'content' — what the chrome UI is showing
 let pillView = null; // transparent floating nav pill overlay (topmost layer)
 let _fullscreen = false;
 let _contentHidden = false; // true when menu/panel overlay is covering content
+let menuView = null; // native WebContentsView for the slide-in menu/panel overlay
+let menuOpen = false;
+const MENU_W = 340;
+const PANEL_W = 420;
+const MENU_TRANSITION_MS = 280;
+let menuSlideAnim = null;
 
 // The floating pill is its own transparent WebContentsView added AFTER every
 // content view, so it always paints on top of the page (Electron composites
@@ -443,6 +449,78 @@ function setLifecycleCallbacks(cb) {
 }
 
 
+/* ── Menu overlay (WebContentsView) ─────────────────────────── */
+// The menu sits above content views and below the pill. It renders the
+// slide-in side menu and settings panels via its own HTML/JS, just like
+// the pill renders the nav bar.
+function createMenuOverlay() {
+  if (!chromeWin || chromeWin.isDestroyed() || menuView) return
+  try {
+    menuView = new WebContentsView({
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'preload', 'preload-menu.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        transparent: true,
+      },
+    })
+    menuView.setBackgroundColor('#00000000')
+    // Position off-screen initially (right side)
+    const [w, h] = chromeWin.getSize()
+    menuView.setBounds({ x: w + 100, y: 0, width: MENU_W, height: h })
+    // Add BEFORE the pill so the pill stays on top
+    chromeWin.contentView.addChildView(menuView)
+    menuView.webContents.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html')).catch((err) => {
+      logger.warn('tabs', 'menu.html failed to load', { error: err.message })
+    })
+    logger.info('tabs', 'Menu overlay created')
+  } catch (e) {
+    logger.error('tabs', 'Failed to create menu overlay', { error: e.message })
+    menuView = null
+  }
+}
+
+function openMenuOverlay() {
+  if (menuOpen || !menuView || !chromeWin || chromeWin.isDestroyed()) return
+  menuOpen = true
+  _contentHidden = true
+  const active = getActiveTab()
+  if (active && active._tab && active._tab._visible) active._tab.hideForOverlay()
+  _contentHidden = true
+  hideActiveContent()
+  slideMenu(MENU_W)
+}
+
+function closeMenuOverlay() {
+  if (!menuOpen) return
+  menuOpen = false
+  _contentHidden = false
+  slideMenu(0)
+  showActiveContent()
+}
+
+function slideMenu(targetWidth) {
+  if (menuSlideAnim) { clearInterval(menuSlideAnim); menuSlideAnim = null }
+  const [winW, winH] = chromeWin.getSize()
+  const startX = menuView.getBounds().x
+  const targetX = targetWidth > 0 ? winW - targetWidth : winW + 100
+  const startTime = Date.now()
+  menuSlideAnim = setInterval(() => {
+    const t = Math.min(1, (Date.now() - startTime) / MENU_TRANSITION_MS)
+    const ease = 1 - Math.pow(1 - t, 3) // easeOutCubic
+    const x = Math.round(startX + (targetX - startX) * ease)
+    try { menuView.setBounds({ x, y: 0, width: targetWidth > 0 ? targetWidth : MENU_W, height: winH }) } catch {}
+    if (t >= 1) { clearInterval(menuSlideAnim); menuSlideAnim = null }
+  }, 16)
+  // Dim the content behind (chrome renderer) + tell menu view to toggle its DOM classes
+  const isOpen = targetWidth > 0;
+  try { chromeWin.webContents.send('menu:state', isOpen) } catch {}
+  try { if (menuView && menuView.webContents && !menuView.webContents.isDestroyed()) menuView.webContents.send('menu:state', isOpen) } catch {}
+}
+
+function isMenuOpen() { return menuOpen }
+
 /* ── Floating nav pill overlay ──────────────────────────────── */
 function createPillOverlay() {
   if (!chromeWin || chromeWin.isDestroyed()) return
@@ -513,6 +591,10 @@ function getPillView() {
   return pillView
 }
 
+function getMenuView() {
+  return menuView
+}
+
 /* ── Broadcast ─────────────────────────────────────────────── */
 function broadcast() {
   if (!chromeWin || chromeWin.isDestroyed()) return
@@ -541,8 +623,10 @@ function broadcast() {
 function forwardGlobalKey(input) {
   if (!input || input.type !== 'keyDown') return
   if (input.key === 'Escape' || input.key === 'Esc') {
+    if (menuOpen) closeMenuOverlay()
+    // Also tell the chrome renderer to update its dimming class
     try { if (chromeWin && !chromeWin.isDestroyed() && !chromeWin.webContents.isDestroyed()) {
-      chromeWin.webContents.send('ui:esc')
+      chromeWin.webContents.send('menu:state', false)
     } } catch {}
   }
 }
@@ -558,6 +642,7 @@ function getStateForContentsId(wcId) {
 
 function init(opts = {}) {
   setChromeWindow(opts.window)
+  createMenuOverlay()
   createPillOverlay()
   create(opts)
   wireFullscreen()
@@ -597,7 +682,8 @@ module.exports = {
   goBack, goForward, getActiveTab, getAll, getRecord, getTabView,
   setChromeWindow, getStateForContentsId, broadcast,
   showHome, showContent, repositionActiveTab, layoutChrome,
-  setLifecycleCallbacks, getPillView, isFullscreen, enterFullscreen, leaveFullscreen,
+  setLifecycleCallbacks, getPillView, getMenuView, isFullscreen, enterFullscreen, leaveFullscreen,
   hideActiveContent, showActiveContent, isContentHidden,
+  openMenuOverlay, closeMenuOverlay, isMenuOpen,
   PILL,
 };

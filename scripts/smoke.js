@@ -3,7 +3,7 @@
 /**
  * Headless smoke test for AM. Exercises the exact user flows that previously
  * regressed: home search -> page view, tab create/switch/close, nav pill,
- * traffic-light IPC, and slide-in panel insets.
+ * traffic-light IPC, and the WebContentsView slide-in menu overlay.
  *
  * Run:  xvfb-run -a ./node_modules/.bin/electron scripts/smoke.js --no-sandbox
  */
@@ -76,6 +76,24 @@ async function clickPill(id) {
   })()`);
 }
 
+// The slide-in menu/panel is a separate WebContentsView overlay (menu.html).
+// Tests drive its buttons through its own webContents.
+function menuEval(js) {
+  const mv = tabs.getMenuView ? tabs.getMenuView() : null;
+  if (!mv || !mv.webContents || mv.webContents.isDestroyed()) {
+    return Promise.resolve(false);
+  }
+  return mv.webContents.executeJavaScript(js, true);
+}
+async function clickMenu(id) {
+  return menuEval(`(() => {
+    const el = document.getElementById(${JSON.stringify(id)});
+    if (!el) return false;
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    return true;
+  })()`);
+}
+
 app.whenReady().then(async () => {
   try {
     const config = require('../src/main/config');
@@ -98,6 +116,10 @@ app.whenReady().then(async () => {
     await waitFor(() => pillEval('!!(window.am && document.getElementById("pillBack"))').catch(() => false), 30000);
     check('floating pill overlay ready', true);
 
+    // Wait for the menu overlay view to load
+    await waitFor(() => menuEval('!!(window.am && document.getElementById("side-menu"))').catch(() => false), 30000);
+    check('menu overlay view ready', true);
+
     const state = () => {
       const t = tabs.getActiveTab();
       const v = t ? tabs.getTabView(t.id) : null;
@@ -115,8 +137,7 @@ app.whenReady().then(async () => {
     check('home search set active tab url', s1.url.includes('google.com/search?q=youtube'), s1.url || '(empty)');
     check('web view visible after search', s1.visible === true);
 
-    // 1b. Content view must be FULL-BLEED to the bottom (no black strip
-    // reserved for the pill — the pill floats OVER the page instead).
+    // 1b. Content view must be FULL-BLEED to the bottom
     const fullView = tabs.getTabView(tabs.getActiveTab().id);
     const fullBounds = fullView ? fullView.view.getBounds() : null;
     const winSize0 = win.getSize();
@@ -177,18 +198,21 @@ app.whenReady().then(async () => {
     check('tab chip close removes a tab', s5.count === countMid - 1, `count=${s5.count}`);
 
     // 6. Navigate to a page so the content view is visible, then test menu
-    // overlay hide/show. The menu slides over the window (no squeeze).
+    // overlay hide/show. The menu is a separate WebContentsView that slides
+    // over the window (content is hidden behind it).
     await setHomeAndEnter('example');
     await sleep(1200);
     await clickPill('pillMenu');
     await sleep(400);
-    const menuOpen = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    const menuOpen = tabs.isMenuOpen();
     const view = tabs.getTabView(tabs.getActiveTab().id);
     const contentVisible = view ? view._visible : false;
     const winSize = win.getSize();
     check('pill menu opens side menu', menuOpen === true);
-    check('menu hides content view (no squeeze)', contentVisible === false, `visible=${contentVisible}`);
-    await clickSel('#menu-close-btn');
+    check('menu hides content view (overlay)', contentVisible === false, `visible=${contentVisible}`);
+
+    // Close via menu's own close button (in the menu overlay view)
+    await clickMenu('menu-close-btn');
     await sleep(400);
     const contentVisibleAfter = tabs.getTabView(tabs.getActiveTab().id)._visible;
     check('closing menu shows content view', contentVisibleAfter === true);
@@ -196,34 +220,39 @@ app.whenReady().then(async () => {
     check('pill survives menu open/close',
       pillBoundsAfter && pillBoundsAfter.x === pillBounds.x && pillBoundsAfter.y === pillBounds.y,
       JSON.stringify(pillBoundsAfter));
+
     // Pill still interactive after the cycle
     await clickPill('pillMenu');
     await sleep(400);
-    const menuOpen2 = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    const menuOpen2 = tabs.isMenuOpen();
     check('pill clickable after menu cycle', menuOpen2 === true);
-    await clickSel('#menu-close-btn');
+    await clickMenu('menu-close-btn');
     await sleep(300);
 
-    // 6b. ui:esc IPC closes the menu — this is the handler that real OS Escape
-    // key reaches via main-process before-input-event -> forwardGlobalKey.
+    // 6b. Escape key closes the menu — simulates real OS Escape via
+    // before-input-event on the active content view.
     await clickPill('pillMenu');
     await sleep(400);
-    await win.webContents.send('ui:esc');
+    // Simulate real Escape key press via before-input-event
+    const escView = tabs.getTabView(tabs.getActiveTab().id);
+    if (escView && escView.webContents && !escView.webContents.isDestroyed()) {
+      escView.webContents.emit('before-input-event', {}, { type: 'keyDown', key: 'Escape', code: 'Escape' });
+    }
     await sleep(400);
-    const escapedFromIpc = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    const escapedFromIpc = !tabs.isMenuOpen();
     const escContentVisible = tabs.getTabView(tabs.getActiveTab().id)._visible;
-    check('ui:esc IPC closes menu', escapedFromIpc === false);
-    check('ui:esc shows content view', escContentVisible === true);
+    check('escape key closes menu', escapedFromIpc === true);
+    check('escape shows content view', escContentVisible === true);
 
     // 6d. Pill menu button toggles (clicking menu button when already open closes)
     await clickPill('pillMenu');
     await sleep(400);
-    const open3 = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    const open3 = tabs.isMenuOpen();
     await clickPill('pillMenu');
     await sleep(400);
-    const closed3 = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    const closed3 = !tabs.isMenuOpen();
     check('pill menu opens on first click', open3 === true);
-    check('pill menu toggles closed on second click', closed3 === false);
+    check('pill menu toggles closed on second click', closed3 === true);
 
     // 6e. Close a tab without crashing (destroy-safety regression test)
     await clickPill('pillTabs');
@@ -239,29 +268,29 @@ app.whenReady().then(async () => {
     const maxState = await rendererEval('window.am.invoke("window:isMaximized")').catch(() => null);
     check('window:isMaximized IPC responds', typeof maxState === 'boolean', String(maxState));
 
-    // 8. Settings/history panels load (inset + panel body rendered)
-    await clickSel('#navMenu');
+    // 8. Settings/history panels load (in the menu overlay view)
+    await clickPill('pillMenu');
     await sleep(300);
-    await clickSel('#menu-history');
+    await clickMenu('sm-history');
     await sleep(500);
-    const panelOpen = await rendererEval('document.querySelector("#panel").classList.contains("open")');
+    const panelOpen = await menuEval('document.getElementById("panel").classList.contains("open")');
     check('history panel opens from menu', panelOpen === true);
-    await rendererEval('document.querySelector("#panel-back").dispatchEvent(new MouseEvent("click", {bubbles:true}))');
+    await clickMenu('panel-back');
     await sleep(400);
 
     // 9. Menu -> panel: content stays hidden through the transition
-    await clickSel('#navMenu');
+    await clickPill('pillMenu');
     await sleep(400);
-    await clickSel('.sheet-item:nth-child(2)'); // Bookmarks
+    await menuEval('document.querySelector(".sheet-item:nth-child(2)").click()'); // Bookmarks
     await sleep(400);
     const viewDuring = tabs.getTabView(tabs.getActiveTab().id);
     const stillHidden = viewDuring ? viewDuring._visible : false;
-    const panelOpen2 = await rendererEval('document.querySelector("#panel").classList.contains("open")');
-    const menuClosed2 = await rendererEval('!document.querySelector("#side-menu").classList.contains("open")');
+    const panelOpen2 = await menuEval('document.getElementById("panel").classList.contains("open")');
+    const sideMenuHidden = await menuEval('!document.getElementById("side-menu").classList.contains("open")');
     check('content stays hidden during menu->panel', stillHidden === false);
     check('panel open after menu->panel nav', panelOpen2 === true);
-    check('menu closed after opening panel', menuClosed2 === true);
-    await rendererEval('document.querySelector("#panel-back").dispatchEvent(new MouseEvent("click", {bubbles:true}))');
+    check('side menu hidden after panel opens', sideMenuHidden === true);
+    await clickMenu('panel-back');
     await sleep(400);
 
     // 10. Fullscreen class + bounds: entering HTML fullscreen covers the window

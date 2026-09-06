@@ -12,7 +12,7 @@ const ALLOWED_INVOKE = new Set([
   'downloads:openFolder', 'downloads:openFile',
   'settings:get', 'settings:set',
   'site:getRule', 'site:getAllRules', 'site:setRule', 'site:deleteRule', 'site:setPermission',
-  'clipboard:copy',
+  'ui:openMenu', 'ui:closeMenu',
   'window:minimize', 'window:maximize', 'window:close', 'window:isMaximized',
   'i18n:getAvailable', 'i18n:setLocale', 'i18n:getStrings',
   'adblock:getStats', 'adblock:isEnabled',
@@ -20,9 +20,7 @@ const ALLOWED_INVOKE = new Set([
 ]);
 
 const ALLOWED_ON = new Set([
-  'tabs:changed', 'tabs:focusAddressBar', 'tabs:bookmarkToggled',
-  'window:maximized', 'downloads:changed',
-  'ui:showHome', 'ui:openMenu', 'ui:esc', 'ui:fullscreen',
+  'menu:changed',
   'menu:state',
 ]);
 

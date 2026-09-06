@@ -135,7 +135,14 @@ function register(win) {
     try { if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('ui:showHome') } catch {}
   });
   registerChannel('ui:openMenu', () => {
-    try { if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('ui:openMenu') } catch {}
+    // Toggle the native WebContentsView menu overlay
+    const { openMenuOverlay, closeMenuOverlay, isMenuOpen } = require('./tabs')
+    if (isMenuOpen()) closeMenuOverlay(); else openMenuOverlay()
+  });
+  registerChannel('ui:closeMenu', () => {
+    // Direct close — used by the menu overlay's own close buttons
+    const { closeMenuOverlay } = require('./tabs')
+    closeMenuOverlay()
   });
   registerChannel('ui:focusChrome', () => {
     try { if (!win.isDestroyed() && !win.webContents.isDestroyed()) { win.focus(); win.webContents.focus(); } } catch {}
