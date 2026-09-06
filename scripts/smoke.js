@@ -209,13 +209,13 @@ app.whenReady().then(async () => {
     const contentVisible = view ? view._visible : false;
     const winSize = win.getSize();
     check('pill menu opens side menu', menuOpen === true);
-    check('menu hides content view (overlay)', contentVisible === false, `visible=${contentVisible}`);
+    check('menu overlays without hiding content', contentVisible === true, `visible=${contentVisible}`);
 
     // Close via menu's own close button (in the menu overlay view)
     await clickMenu('menu-close-btn');
     await sleep(400);
     const contentVisibleAfter = tabs.getTabView(tabs.getActiveTab().id)._visible;
-    check('closing menu shows content view', contentVisibleAfter === true);
+    check('content still visible after menu closes', contentVisibleAfter === true);
     const pillBoundsAfter = tabs.getPillView() ? tabs.getPillView().getBounds() : null;
     check('pill survives menu open/close',
       pillBoundsAfter && pillBoundsAfter.x === pillBounds.x && pillBoundsAfter.y === pillBounds.y,
@@ -242,7 +242,7 @@ app.whenReady().then(async () => {
     const escapedFromIpc = !tabs.isMenuOpen();
     const escContentVisible = tabs.getTabView(tabs.getActiveTab().id)._visible;
     check('escape key closes menu', escapedFromIpc === true);
-    check('escape shows content view', escContentVisible === true);
+    check('content stays visible through escape', escContentVisible === true);
 
     // 6d. Pill menu button toggles (clicking menu button when already open closes)
     await clickPill('pillMenu');
@@ -287,7 +287,7 @@ app.whenReady().then(async () => {
     const stillHidden = viewDuring ? viewDuring._visible : false;
     const panelOpen2 = await menuEval('document.getElementById("panel").classList.contains("open")');
     const sideMenuHidden = await menuEval('!document.getElementById("side-menu").classList.contains("open")');
-    check('content stays hidden during menu->panel', stillHidden === false);
+    check('content stays visible during menu->panel', stillHidden === true);
     check('panel open after menu->panel nav', panelOpen2 === true);
     check('side menu hidden after panel opens', sideMenuHidden === true);
     await clickMenu('panel-back');

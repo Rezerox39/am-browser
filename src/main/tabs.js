@@ -509,16 +509,9 @@ function openMenuOverlay() {
   if (menuOpen || !menuView || !chromeWin || chromeWin.isDestroyed()) return
 
   menuOpen = true
-  _contentHidden = true
 
-  const active = getActiveTab()
-  if (active && active._tab && active._tab._visible) {
-    active._tab.hideForOverlay()
-  }
-
-  hideActiveContent()
-
-  // Critical: restore native stacking order AFTER content is manipulated.
+  // Do NOT hide or move the webpage.
+  // The menu is a native WebContentsView that overlays the page.
   ensureMenuAboveContent()
 
   slideMenu(MENU_W)
@@ -528,11 +521,8 @@ function closeMenuOverlay() {
   if (!menuOpen) return
 
   menuOpen = false
-  _contentHidden = false
 
-  slideMenu(0, () => {
-    showActiveContent()
-  })
+  slideMenu(0)
 }
 
 function slideMenu(targetWidth, onComplete) {
@@ -642,11 +632,20 @@ function layoutPill() {
 
 // Re-adding an already-attached child moves it to the END of the view stack,
 // i.e. the TOPMOST paint/input layer. Call after every content-view change.
+// Maintains guaranteed native stacking order:
+//   tab/content views (bottom) → menuView → pillView (topmost)
 function ensurePillTop() {
-  if (!pillView || !chromeWin || chromeWin.isDestroyed()) return
+  if (!chromeWin || chromeWin.isDestroyed()) return
   try {
-    chromeWin.contentView.addChildView(pillView)
-    pillView.setVisible(true)
+    // Menu sits above all tab content views (even when idle, it's off-screen right)
+    if (menuView && !menuView.webContents.isDestroyed()) {
+      chromeWin.contentView.addChildView(menuView)
+    }
+    // Pill is always the topmost layer
+    if (pillView && !pillView.webContents.isDestroyed()) {
+      chromeWin.contentView.addChildView(pillView)
+      pillView.setVisible(true)
+    }
   } catch (e) {
     logger.warn('tabs', 'ensurePillTop failed', { error: e.message })
   }
