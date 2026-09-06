@@ -22,7 +22,7 @@ let _contentHidden = false; // true when menu/panel overlay is covering content
 let menuView = null; // native WebContentsView for the slide-in menu/panel overlay
 let menuOpen = false;
 const MENU_W = 340;
-const PANEL_W = 420;
+const MENU_MARGIN = 20;  // px from each edge for the floating panel
 const MENU_TRANSITION_MS = 280;
 let menuSlideAnim = null;
 
@@ -466,9 +466,15 @@ function createMenuOverlay() {
       },
     })
     menuView.setBackgroundColor('#00000000')
-    // Position off-screen initially (right side)
+    // Position off-screen initially (right side, floating geometry)
     const [w, h] = chromeWin.getSize()
-    menuView.setBounds({ x: w + 100, y: 0, width: MENU_W, height: h })
+    const usableH = localWorkAreaHeight()
+    menuView.setBounds({
+      x: w + 100,
+      y: MENU_MARGIN,
+      width: MENU_W,
+      height: Math.max(200, usableH - MENU_MARGIN * 2),
+    })
     // Add BEFORE the pill so the pill stays on top
     chromeWin.contentView.addChildView(menuView)
     menuView.webContents.loadFile(path.join(__dirname, '..', 'renderer', 'menu.html')).catch((err) => {
@@ -534,7 +540,7 @@ function slideMenu(targetWidth, onComplete) {
   const [winW, winH] = chromeWin.getSize()
   const startX = menuView.getBounds().x
   const targetX = targetWidth > 0
-    ? winW - targetWidth
+    ? winW - targetWidth - MENU_MARGIN
     : winW + 100
 
   const startTime = Date.now()
@@ -548,12 +554,13 @@ function slideMenu(targetWidth, onComplete) {
     const ease = 1 - Math.pow(1 - t, 3)
     const x = Math.round(startX + (targetX - startX) * ease)
 
+    const usableH = localWorkAreaHeight()
     try {
       menuView.setBounds({
         x,
-        y: 0,
+        y: MENU_MARGIN,
         width: MENU_W,
-        height: winH,
+        height: Math.max(200, usableH - MENU_MARGIN * 2),
       })
     } catch {}
 
@@ -567,10 +574,9 @@ function slideMenu(targetWidth, onComplete) {
 
   const isOpen = targetWidth > 0
 
-  try {
-    chromeWin.webContents.send('menu:state', isOpen)
-  } catch {}
-
+  // No full-window dim needed — the floating capsule is self-contained.
+  // Just tell the menu view to show/hide its own backdrop (if any)
+  // and toggle DOM classes for open/close animations.
   try {
     if (
       menuView &&
@@ -715,10 +721,6 @@ function forwardGlobalKey(input) {
   if (!input || input.type !== 'keyDown') return
   if (input.key === 'Escape' || input.key === 'Esc') {
     if (menuOpen) closeMenuOverlay()
-    // Also tell the chrome renderer to update its dimming class
-    try { if (chromeWin && !chromeWin.isDestroyed() && !chromeWin.webContents.isDestroyed()) {
-      chromeWin.webContents.send('menu:state', false)
-    } } catch {}
   }
 }
 

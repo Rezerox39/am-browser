@@ -211,6 +211,15 @@ app.whenReady().then(async () => {
     check('pill menu opens side menu', menuOpen === true);
     check('menu overlays without hiding content', contentVisible === true, `visible=${contentVisible}`);
 
+    // Verify floating geometry: menu has non-zero top/right/bottom margins (not edge-attached)
+    const menuBounds = tabs.getMenuView().getBounds();
+    const topMargin = menuBounds.y;
+    const rightMargin = winSize[0] - (menuBounds.x + menuBounds.width);
+    const bottomMargin = winSize[1] - (menuBounds.y + menuBounds.height);
+    check('menu has top margin (>0)', topMargin > 0, `top=${topMargin}`);
+    check('menu has right margin (>0)', rightMargin > 0, `right=${rightMargin}`);
+    check('menu has bottom margin (>0)', bottomMargin > 0, `bottom=${bottomMargin}`);
+
     // Close via menu's own close button (in the menu overlay view)
     await clickMenu('menu-close-btn');
     await sleep(400);
