@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "AM Browser Test Extension",
+  "version": "1.0.0",
+  "description": "AM Browser extension compatibility test fixture",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

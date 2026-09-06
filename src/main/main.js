@@ -53,11 +53,9 @@ function serveAdblockPage() {
   <div class="stat"><div class="label">Requests Allowed</div><div class="value green">${st.allowed}</div></div>
   <div class="stat"><div class="label">Session</div><div class="value" style="font-size:14px">defaultSession</div></div>
 </div>
-
 <h2>Recent Requests (last ${recent.length})</h2>
 ${blocked.map(r => '<div class="match blocked"><span class="tag block">BLOCK</span><span class="tag">' + r.type + '</span>' + r.url + '</div>').join('')}
 ${allowed.slice(-10).map(r => '<div class="match allowed"><span class="tag allow">ALLOW</span><span class="tag">' + r.type + '</span>' + r.url + '</div>').join('')}
-
 <h2>YouTube / Video Ad Limitation</h2>
 <div class="limitation">
   <strong>Why YouTube ads may still appear:</strong><br>
@@ -80,79 +78,137 @@ ${allowed.slice(-10).map(r => '<div class="match allowed"><span class="tag allow
 }
 
 function serveExtensionsPage() {
-  const extManager = require('./extensions/manager');
   const exts = extManager.listExtensions();
+  const extRows = exts.map(ext => {
+    const errors = extManager.getExtensionErrors(ext.id);
+    const errorCount = errors.errors ? errors.errors.length : 0;
+    const statusClass = ext.enabled ? 'green' : 'dim';
+    const statusText = ext.enabled ? 'Enabled' : 'Disabled';
+    const permissions = ext.permissions || [];
+    const hostPerms = ext.hostPermissions || [];
+    const popup = ext.manifest && ext.manifest.action && ext.manifest.action.default_popup;
+
+    return '<div class="ext-card">' +
+      '<div class="ext-header">' +
+        '<div class="ext-info">' +
+          '<div class="ext-name">' + (ext.name || 'Unknown') + '</div>' +
+          '<div class="ext-meta">v' + (ext.version || '?') + ' · ' + ext.id.substring(0, 12) + '…</div>' +
+          (ext.description ? '<div class="ext-desc">' + ext.description + '</div>' : '') +
+        '</div>' +
+        '<div class="ext-status ' + statusClass + '">' + statusText + '</div>' +
+      '</div>' +
+      (permissions.length || hostPerms.length ?
+        '<div class="ext-perms">' +
+          permissions.map(p => '<span class="perm-tag">' + p + '</span>').join('') +
+          hostPerms.map(p => '<span class="perm-tag host">' + p + '</span>').join('') +
+        '</div>' : '') +
+      (errorCount > 0 ? '<div class="ext-errors">⚠ ' + errorCount + ' error(s)</div>' : '') +
+      '<div class="ext-actions">' +
+        (popup ? '<a class="ext-btn" href="javascript:void(0)" onclick="openExtPopup(\'' + ext.id + '\')">Popup</a>' : '') +
+        '<a class="ext-btn" href="am://extensions?id=' + ext.id + '">Details</a>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
   const compatibilityTable = [
     { api: 'Manifest V2/V3', status: '✓' },
-    { api: 'Content scripts', status: '✓' },
+    { api: 'Content Scripts', status: '✓' },
     { api: 'chrome.storage.local', status: '✓' },
+    { api: 'chrome.runtime', status: '✓' },
     { api: 'chrome.tabs (partial)', status: '⚠ Partial' },
     { api: 'chrome.webRequest', status: '✓' },
-    { api: 'chrome.runtime', status: '✓' },
     { api: 'chrome.contextMenus', status: '✓' },
-    { api: 'chrome.action (popups)', status: '✓' },
-    { api: 'Service workers (MV3)', status: '✓' },
-    { api: 'chrome.management', status: '⚠ Limited' },
-    { api: 'DeclarativeNetRequest', status: '⚠ Verify' },
-    { api: 'Chrome Web Store direct', status: '✗ Not supported' },
+    { api: 'Extension popups', status: '✓' },
+    { api: 'Developer mode', status: '✓' },
+    { api: 'DeclarativeNetRequest', status: '⚠ Limited' },
   ];
-
-  const extRows = exts.length > 0
-    ? exts.map(e => '<div class="ext-row">' +
-        '<span class="ext-status ' + (e.enabled ? 'on' : 'off') + '"></span>' +
-        '<div><strong>' + (e.name || 'Unknown') + '</strong> <span class="version">v' + e.version + '</span>' +
-        '<div class="ext-id">' + e.id + '</div>' +
-        (e.description ? '<div class="ext-desc">' + e.description + '</div>' : '') +
-        '<div class="ext-perms">Permissions: ' + (e.permissions && e.permissions.length > 0 ? e.permissions.join(', ') : 'none') + '</div>' +
-        '</div></div>'
-      ).join('')
-    : '<div class="ext-row"><em>No extensions installed</em></div>';
-
-  const compatRows = compatibilityTable.map(c =>
-    '<div class="compat-row"><span class="compat-api">' + c.api + '</span><span class="compat-status">' + c.status + '</span></div>'
+  const compatRows = compatibilityTable.map(r =>
+    '<div class="compat-row"><span class="compat-api">' + r.api + '</span><span class="compat-status">' + r.status + '</span></div>'
   ).join('');
+
+  const extCount = exts.length;
+  const enabledCount = exts.filter(e => e.enabled).length;
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>AM — Extensions</title>
 <style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; margin: 0; }
-  h1 { font-size: 20px; margin-bottom: 24px; color: #5a83ff; }
-  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #606060; margin: 24px 0 12px; border-bottom: 1px solid #1a1a1a; padding-bottom: 6px; }
-  .ext-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid #1a1a1a; border-radius: 10px; margin: 8px 0; background: rgba(255,255,255,0.02); }
-  .ext-status { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
-  .ext-status.on { background: #28c840; }
-  .ext-status.off { background: #555; }
-  .version { font-size: 12px; color: #a0a0a0; }
-  .ext-id { font-size: 11px; color: #606060; font-family: monospace; margin-top: 2px; }
-  .ext-desc { font-size: 12px; color: #a0a0a0; margin-top: 4px; }
-  .ext-perms { font-size: 11px; color: #606060; margin-top: 4px; }
-  .compat-row { display: flex; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid #1a1a1a; font-size: 13px; }
-  .compat-api { color: #e0e0e0; }
-  .compat-status { color: #a0a0a0; }
-  .compat-status:contains("✓") { color: #28c840; }
-  .info { background: rgba(90,131,255,0.1); border: 1px solid rgba(90,131,255,0.2); border-radius: 8px; padding: 16px; margin-top: 24px; font-size: 13px; line-height: 1.6; }
+  h1 { font-size: 22px; margin-bottom: 8px; color: #5a83ff; font-weight: 700; }
+  .subtitle { font-size: 13px; color: #606060; margin-bottom: 24px; }
+  .stats { display: flex; gap: 32px; margin-bottom: 28px; }
+  .stat-box { min-width: 120px; }
+  .stat-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #606060; }
+  .stat-box .value { font-size: 20px; font-weight: 600; color: #fff; margin-top: 2px; }
+  .stat-box .value.green { color: #28c840; }
+  .ext-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; padding: 16px; margin-bottom: 12px;
+    transition: border-color 0.15s ease;
+  }
+  .ext-card:hover { border-color: rgba(90,131,255,0.2); }
+  .ext-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .ext-name { font-size: 15px; font-weight: 600; color: #fff; }
+  .ext-meta { font-size: 11px; color: #606060; margin-top: 2px; font-family: monospace; }
+  .ext-desc { font-size: 12px; color: #a0a0a0; margin-top: 4px; line-height: 1.4; }
+  .ext-status { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+  .ext-status.green { background: rgba(40,200,64,0.15); color: #28c840; }
+  .ext-status.dim { background: rgba(255,255,255,0.06); color: #606060; }
+  .ext-perms { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .perm-tag { font-size: 10px; padding: 2px 8px; border-radius: 4px; background: rgba(90,131,255,0.1); color: #5a83ff; }
+  .perm-tag.host { background: rgba(255,165,0,0.1); color: #ffa500; }
+  .ext-errors { font-size: 11px; color: #ff5f57; margin-top: 6px; }
+  .ext-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .ext-btn {
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; text-decoration: none;
+    border: 1px solid rgba(255,255,255,0.08); color: #a0a0a0;
+    transition: all 0.15s ease; cursor: pointer;
+  }
+  .ext-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
+  .section { margin-top: 32px; }
+  .section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #606060; margin-bottom: 12px; border-bottom: 1px solid #1a1a1a; padding-bottom: 6px; }
+  .compat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; }
+  .compat-api { color: #a0a0a0; }
+  .compat-status { color: #28c840; }
+  .info { background: rgba(90,131,255,0.08); border: 1px solid rgba(90,131,255,0.15); border-radius: 8px; padding: 16px; margin-top: 24px; font-size: 13px; line-height: 1.6; color: #a0a0a0; }
   .info strong { color: #5a83ff; }
-</style></head><body>
+  .info code { background: rgba(255,255,255,0.06); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+  .dev-section { margin-top: 24px; padding: 16px; border: 1px dashed rgba(255,255,255,0.08); border-radius: 8px; }
+  .empty { text-align: center; padding: 32px; color: #606060; font-size: 14px; }
+</style>
+<script>
+function openExtPopup(id) {
+  fetch('/extensions-popup/' + id).catch(() => {});
+}
+</script></head><body>
 <h1>Extensions</h1>
+<div class="subtitle">${extCount} installed · ${enabledCount} enabled</div>
 
-<h2>Installed (${exts.length})</h2>
-${extRows}
+<div class="stats">
+  <div class="stat-box"><div class="label">Installed</div><div class="value">${extCount}</div></div>
+  <div class="stat-box"><div class="label">Enabled</div><div class="value green">${enabledCount}</div></div>
+</div>
 
-<h2>Electron Extension API Compatibility</h2>
-${compatRows}
+${extCount > 0 ? extRows : '<div class="empty">No extensions installed.<br>Use Developer Mode to load unpacked extensions.</div>'}
 
-<h2>Notes</h2>
+<div class="dev-section">
+  <h2>Developer Mode</h2>
+  <p style="font-size:12px;color:#606060;margin-bottom:8px;">To install an unpacked extension, copy it to:<br>
+  <code style="color:#5a83ff;font-size:11px;">${app.getPath('userData')}/extensions/installed/</code></p>
+</div>
+
+<div class="section">
+  <h2>Electron Extension API Compatibility</h2>
+  ${compatRows}
+</div>
+
 <div class="info">
-  <strong>Chrome Web Store:</strong> Direct Web Store installation is supported via
-  <code>electron-chrome-web-store</code>. However, not all store extensions will work
-  because Electron does not aim for complete Chrome compatibility.<br><br>
-  <strong>Content scripts:</strong> MV3 content scripts declared in manifest.json are
-  injected by Electron's extension system into matching pages automatically.<br><br>
-  <strong>Extension popups:</strong> Click an extension's icon in the toolbar to open
-  its popup. Popups are rendered as native overlays using Electron's WebContentsView.<br><br>
-  <strong>Developer mode:</strong> Install unpacked extensions by copying them into
-  <code>${require('electron').app.getPath('userData')}/extensions/installed/</code>
-  or use the Install button in the toolbar menu.
+  <strong>Chrome Web Store:</strong> Supported via <code>electron-chrome-web-store</code>.
+  Not all store extensions work — Electron does not aim for complete Chrome compatibility.<br><br>
+  <strong>Content scripts:</strong> MV3 content scripts are injected by Electron's extension system automatically.<br><br>
+  <strong>Extension popups:</strong> Click Popup on an installed extension to test its popup UI.<br><br>
+  <strong>AM limitations:</strong> Electron does not support <code>chrome.declarativeNetRequest</code> fully,
+  and some <code>chrome.tabs</code> APIs are partial. See the compatibility table above.
 </div>
 </body></html>`;
 
@@ -162,7 +218,7 @@ ${compatRows}
   });
 }
 
-// Make errors VISIBLE — if anything fails before the window shows, the user sees a native dialog.
+// Make errors VISIBLE
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
   try { logger.error('main', 'Uncaught exception', { error: err.message, stack: err.stack }); } catch {}
@@ -175,82 +231,45 @@ process.on('unhandledRejection', (reason) => {
   try { logger.error('main', 'Unhandled rejection', { reason: String(reason) }); } catch {}
 });
 
-// Single instance lock — but do NOT quit if we lose the lock (a previous crashed
-// process might still hold it). Just proceed; the worst case is two AM windows.
 let gotLock = false;
 try { gotLock = app.requestSingleInstanceLock(); } catch {}
+if (!gotLock) { logger.warn('main', 'Single instance lock not acquired — proceeding anyway'); }
+app.on('second-instance', () => { windowManager.focus(); });
 
-if (!gotLock) {
-  logger.warn('main', 'Single instance lock not acquired — proceeding anyway');
-}
-
-app.on('second-instance', () => {
-  windowManager.focus();
-});
-
-// Load config first
 config.load();
 const cfg = config.get();
-
-// Set locale
 setLocale(cfg.language || 'en');
-
-// Set app identity
 app.setName('AM');
-if (process.platform === 'win32') {
-  try { app.setAppUserModelId('com.am.browser'); } catch {}
-}
+if (process.platform === 'win32') { try { app.setAppUserModelId('com.am.browser'); } catch {} }
 
-// Register privileged schemes before app is ready (required for extensions)
 extensionsManager.announceSchemes();
 
-// Register privileged am:// protocol for internal diagnostic pages.
-// This MUST run before app.whenReady().
 app.whenReady().then(async () => {
   protocol.handle('am', (request) => {
     const url = request.url.toLowerCase();
-    if (url === 'am://adblock') {
-      return serveAdblockPage();
-    }
-    if (url === 'am://extensions') {
-      return serveExtensionsPage();
-    }
+    if (url === 'am://adblock') return serveAdblockPage();
+    if (url === 'am://extensions' || url.startsWith('am://extensions?')) return serveExtensionsPage();
     return new Response('Unknown am:// page', { status: 404, headers: { 'content-type': 'text/plain' } });
   });
   try {
-    // Security hardening (accesses session.defaultSession)
     security.harden();
-
-    // Initialize download manager (accesses session.defaultSession)
     downloadsManager.init();
-
-    // Initialize ad-block (accesses session.defaultSession)
     adblockService.init();
-
-    // Create main window
     const win = windowManager.create();
     downloadsManager.setWindow(win);
     ipcHandler.register(win);
     tabsManager.init({ window: win, url: cfg.homePage === 'start' ? '' : cfg.homePage });
 
-    // Initialize extension manager (persistent registry)
     extManager.init();
-
-    // Load persisted extensions from registry
     try {
       const loadResults = await extManager.loadPersistedExtensions();
       logger.info('extensions', 'Loaded ' + loadResults.length + ' persisted extension(s)');
-    } catch (e) {
-      logger.warn('extensions', 'Persisted extension load failed', { error: e.message });
-    }
+    } catch (e) { logger.warn('extensions', 'Persisted extension load failed', { error: e.message }); }
 
-    // Initialize extension support (ElectronChromeExtensions + web store)
     try {
       await extensionsManager.init(win);
       extensionsManager.wireContextMenu();
-    } catch (e) {
-      logger.error('extensions', 'Failed to init extensions', { error: e.message });
-    }
+    } catch (e) { logger.error('extensions', 'Failed to init extensions', { error: e.message }); }
 
     logger.info('main', 'App startup complete');
   } catch (err) {
@@ -261,7 +280,6 @@ app.whenReady().then(async () => {
   }
 });
 
-// macOS: re-create window when dock icon clicked
 app.on('activate', () => {
   if (!windowManager.getWindow()) {
     const win = windowManager.create();
@@ -271,11 +289,6 @@ app.on('activate', () => {
   }
 });
 
-app.on('window-all-closed', () => {
-  config.saveNow();
-  app.quit();
-});
-
-// Graceful shutdown
+app.on('window-all-closed', () => { config.saveNow(); app.quit(); });
 process.on('SIGINT', () => { config.saveNow(); app.quit(); });
 process.on('SIGTERM', () => { config.saveNow(); app.quit(); });

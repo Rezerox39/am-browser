@@ -17,24 +17,17 @@
   let currentPanel = '';
   let activeUrl = '';
 
-  /* ── Helpers ─────────────────────────────────────────────── */
   async function safeInvoke(ch, ...a) {
     try { return await api.invoke(ch, ...a); } catch { return undefined; }
   }
   function toast(msg) {
     toastEl.textContent = msg; toastEl.classList.add('show');
-    clearTimeout(toastEl._t); toastEl._t = setTimeout(() => toastEl.classList.remove("show"), 2200);
-  }
-  function fmtBytes(b) {
-    if (!b || isNaN(b)) return '0 B';
-    const u = ['B','KB','MB','GB']; let i = 0, n = b;
-    while (n >= 1024 && i < 3) { n /= 1024; i++; }
-    return n.toFixed(i ? 1 : 0) + ' ' + u[i];
+    clearTimeout(toastEl._t); toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 2200);
   }
 
-  /* ── Side menu ───────────────────────────────────────────── */
   const MENU_ITEMS = [
     { label: 'New Tab', action: 'createTab' },
+    { label: 'Extensions', action: 'panel', panel: 'extensions', title: 'Extensions' },
     { label: 'Bookmarks', action: 'panel', panel: 'bookmarks', title: 'Bookmarks' },
     { label: 'History', action: 'panel', panel: 'history', title: 'History' },
     { label: 'Downloads', action: 'panel', panel: 'downloads', title: 'Downloads' },
@@ -45,6 +38,7 @@
 
   const ICONS = {
     'New Tab': '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    'Extensions': '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     'Bookmarks': '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
     'History': '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     'Downloads': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
@@ -65,15 +59,9 @@
   }
 
   function handleAction(item) {
-    if (item.action === 'createTab') {
-      safeInvoke('tabs:create', {});
-      closeOverlay();
-    } else if (item.action === 'refresh') {
-      safeInvoke('tabs:reload');
-      closeOverlay();
-    } else if (item.action === 'panel') {
-      openPanel(item.panel, item.title);
-    }
+    if (item.action === 'createTab') { safeInvoke('tabs:create', {}); closeOverlay(); }
+    else if (item.action === 'refresh') { safeInvoke('tabs:reload'); closeOverlay(); }
+    else if (item.action === 'panel') openPanel(item.panel, item.title);
   }
 
   function closeOverlay() {
@@ -83,11 +71,9 @@
     currentPanel = '';
     panelBody.innerHTML = '';
     panelTitle.textContent = '';
-    // Ask the main process to slide the overlay view off-screen
     safeInvoke('ui:closeMenu');
   }
 
-  /* ── Panel (settings / history / etc.) ───────────────────── */
   function openPanel(type, title) {
     panelTitle.textContent = title;
     panelAction.innerHTML = '';
@@ -97,81 +83,174 @@
     sideMenu.classList.remove('open');
     panel.classList.add('open');
     currentPanel = type;
+    panelBody.innerHTML = '<div class="empty-state">Loading...</div>';
     loadPanel();
   }
 
   async function loadPanel() {
+    panelBody.innerHTML = '';
+    if (currentPanel === 'extensions') return renderExtensions();
     if (currentPanel === 'history') return renderHistory();
     if (currentPanel === 'bookmarks') return renderBookmarks();
     if (currentPanel === 'downloads') return renderDownloads();
     if (currentPanel === 'settings') return renderSettings();
     if (currentPanel === 'siteSettings') return renderSiteSettings();
+    panelBody.innerHTML = '<div class="empty-state">—</div>';
   }
 
-  function empty(msg) { panelBody.innerHTML = '<div class="empty-state">' + msg + '</div>'; }
+  // ── Extensions panel ──
+  async function renderExtensions() {
+    const exts = await safeInvoke('extensions:list');
+    if (!exts || !exts.length) {
+      panelBody.innerHTML = '<div class="empty-state">No extensions installed.<br><small style="color:var(--fg-dim)">Use Developer Mode → Load Unpacked to install.</small></div>';
+      // Add Developer Mode toggle
+      const devRow = document.createElement('div');
+      devRow.className = 'mg-item';
+      devRow.innerHTML = '<label>Developer Mode</label>';
+      const sw = document.createElement('div');
+      sw.className = 'switch';
+      sw.addEventListener('click', async () => {
+        sw.classList.toggle('on');
+        if (sw.classList.contains('on')) {
+          // Show "Load Unpacked" button
+          let loadBtn = panelBody.querySelector('.load-unpacked-btn');
+          if (!loadBtn) {
+            loadBtn = document.createElement('button');
+            loadBtn.className = 'btn load-unpacked-btn';
+            loadBtn.textContent = 'Load Unpacked';
+            loadBtn.addEventListener('click', async () => {
+              const result = await safeInvoke('extensions:openDirPicker');
+              if (result && result.success) toast('Extension installed');
+              else if (result && result.error) toast('Error: ' + result.error);
+              renderExtensions();
+            });
+            panelBody.appendChild(loadBtn);
+          }
+        }
+      });
+      devRow.appendChild(sw);
+      panelBody.appendChild(devRow);
+      return;
+    }
+
+    // Extension list
+    for (const ext of exts) {
+      const card = document.createElement('div');
+      card.className = 'pi';
+      const desc = ext.description ? '<div class="pi-url">' + ext.description + '</div>' : '';
+      card.innerHTML = '<div class="pi-title">' + ext.name + ' <small style="color:var(--fg-dim)">' + ext.version + '</small></div>' + desc;
+      card.style.cursor = 'pointer';
+
+      // Toggle switch
+      const sw = document.createElement('div');
+      sw.className = 'switch' + (ext.enabled ? ' on' : '');
+      sw.style.position = 'absolute';
+      sw.style.right = '14px';
+      sw.style.top = '12px';
+      sw.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        sw.classList.toggle('on');
+        if (sw.classList.contains('on')) await safeInvoke('extensions:enable', ext.id);
+        else await safeInvoke('extensions:disable', ext.id);
+      });
+      card.appendChild(sw);
+
+      // Click to open popup if extension has one
+      card.addEventListener('click', async () => {
+        const info = await safeInvoke('extensions:getInfo', ext.id);
+        if (info && info.manifest && info.manifest.action && info.manifest.action.default_popup) {
+          await safeInvoke('extensions:openPopup', ext.id);
+          closeOverlay();
+        }
+      });
+
+      panelBody.appendChild(card);
+    }
+
+    // Developer Mode + Load Unpacked
+    const devRow = document.createElement('div');
+    devRow.className = 'mg-item';
+    devRow.style.borderTop = '1px solid rgba(255,255,255,0.06)';
+    devRow.innerHTML = '<label>Developer Mode</label>';
+    const devSw = document.createElement('div');
+    devSw.className = 'switch';
+    devSw.addEventListener('click', async () => {
+      devSw.classList.toggle('on');
+      let loadBtn = panelBody.querySelector('.load-unpacked-btn');
+      if (devSw.classList.contains('on') && !loadBtn) {
+        loadBtn = document.createElement('button');
+        loadBtn.className = 'btn load-unpacked-btn';
+        loadBtn.style.margin = '12px 18px';
+        loadBtn.textContent = 'Load Unpacked';
+        loadBtn.addEventListener('click', async () => {
+          const result = await safeInvoke('extensions:openDirPicker');
+          if (result && result.success) { toast('Extension installed'); renderExtensions(); }
+          else if (result && result.error) toast('Error: ' + result.error);
+        });
+        panelBody.appendChild(loadBtn);
+      } else if (!devSw.classList.contains('on') && loadBtn) {
+        loadBtn.remove();
+      }
+    });
+    devRow.appendChild(devSw);
+    panelBody.appendChild(devRow);
+  }
 
   async function renderHistory() {
-    const q = panelSearch.value.trim();
-    let items;
-    try {
-      items = q ? await safeInvoke('history:search', q, 50) : await safeInvoke('history:getRecent', 100);
-      if (!Array.isArray(items)) items = [];
-    } catch { return empty('Error'); }
-    if (!items.length) return empty('No history yet.');
-    panelBody.innerHTML = '';
-    for (const it of items) {
-      const d = document.createElement('div'); d.className = 'pi';
-      d.innerHTML = '<div class="pi-title">' + (it.title || it.url) + '</div><div class="pi-url">' + it.url + '</div>';
-      d.addEventListener('click', () => { safeInvoke('tabs:navigate', null, it.url); closeOverlay(); });
-      panelBody.appendChild(d);
+    const items = await safeInvoke('history:getRecent', 100);
+    if (!items || !items.length) { panelBody.innerHTML = '<div class="empty-state">No history</div>'; return; }
+    const q = panelSearch.value.toLowerCase();
+    const filtered = q ? items.filter(i => (i.title || '').toLowerCase().includes(q) || (i.url || '').toLowerCase().includes(q)) : items;
+    for (const item of filtered) {
+      const el = document.createElement('div');
+      el.className = 'pi';
+      el.innerHTML = '<div class="pi-title">' + (item.title || item.url || '—') + '</div><div class="pi-url">' + item.url + '</div>';
+      el.addEventListener('click', () => { safeInvoke('tabs:create', { url: item.url }); closeOverlay(); });
+      panelBody.appendChild(el);
     }
   }
 
   async function renderBookmarks() {
-    let items;
-    try { items = await safeInvoke('bookmarks:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
-    if (!items.length) return empty('No bookmarks yet.');
-    panelBody.innerHTML = '';
-    for (const bm of items) {
-      const d = document.createElement('div'); d.className = 'pi';
-      d.innerHTML = '<div class="pi-title">' + (bm.title || bm.url) + '</div><div class="pi-url">' + bm.url + '</div><span class="pi-del">✕</span>';
-      d.addEventListener('click', () => { safeInvoke('tabs:navigate', null, bm.url); closeOverlay(); });
-      d.querySelector('.pi-del').addEventListener('click', async e => { e.stopPropagation(); await safeInvoke('bookmarks:remove', bm.id); renderBookmarks(); });
-      panelBody.appendChild(d);
+    const items = await safeInvoke('bookmarks:getAll');
+    if (!items || !items.length) { panelBody.innerHTML = '<div class="empty-state">No bookmarks</div>'; return; }
+    for (const item of items) {
+      const el = document.createElement('div');
+      el.className = 'pi';
+      el.innerHTML = '<div class="pi-title">' + (item.title || '—') + '</div><div class="pi-url">' + item.url + '</div><button class="pi-del">✕</button>';
+      el.querySelector('.pi-del').addEventListener('click', async (e) => { e.stopPropagation(); await safeInvoke('bookmarks:remove', item.id); loadPanel(); });
+      el.addEventListener('click', () => { safeInvoke('tabs:create', { url: item.url }); closeOverlay(); });
+      panelBody.appendChild(el);
     }
   }
 
   async function renderDownloads() {
-    let items;
-    try { items = await safeInvoke('downloads:getAll'); if (!Array.isArray(items)) items = []; } catch { return empty('Error'); }
-    if (!items.length) return empty('No downloads yet.');
-    panelBody.innerHTML = '';
-    for (const dl of items) {
-      const st = dl.state === 'progressing' ? 'Downloading...' : dl.state === 'failed' ? 'Failed' : 'Complete';
-      const d = document.createElement('div'); d.className = 'dl-item';
-      d.innerHTML = '<div class="dl-name">' + dl.filename + '</div><div class="dl-meta">' + st + ' · ' + fmtBytes(dl.receivedBytes || dl.totalBytes) + '</div><div class="dl-actions"><button>Open</button><button>Remove</button></div>';
-      d.querySelectorAll('button')[0].addEventListener('click', () => { if (dl.state === 'complete' && dl.savePath) safeInvoke('downloads:openFile', dl.savePath); });
-      d.querySelectorAll('button')[1].addEventListener('click', async () => { await safeInvoke('downloads:remove', dl.id); renderDownloads(); });
-      panelBody.appendChild(d);
+    const items = await safeInvoke('downloads:getAll');
+    if (!items || !items.length) { panelBody.innerHTML = '<div class="empty-state">No downloads</div>'; return; }
+    for (const item of items) {
+      const el = document.createElement('div');
+      el.className = 'dl-item';
+      el.innerHTML = '<div class="dl-name">' + (item.filename || item.url || '—') + '</div><div class="dl-meta">' + (item.state || '') + '</div><div class="dl-actions"><button class="dl-open">Open</button><button class="dl-folder">Folder</button><button class="dl-remove">✕</button></div>';
+      el.querySelector('.dl-open').addEventListener('click', () => safeInvoke('downloads:openFile', item.path));
+      el.querySelector('.dl-folder').addEventListener('click', () => safeInvoke('downloads:openFolder', item.path));
+      el.querySelector('.dl-remove').addEventListener('click', () => { safeInvoke('downloads:remove', item.id); loadPanel(); });
+      panelBody.appendChild(el);
     }
   }
 
   async function renderSettings() {
     const cfg = await safeInvoke('settings:get');
-    const avail = await safeInvoke('i18n:getAvailable');
-    panelBody.innerHTML = '';
-    const sec = title => { const el = document.createElement('div'); el.className = 'sec-title'; el.textContent = title; return el; };
-    const item = (label, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + label + '</label>'; el.appendChild(ctrl); return el; };
-
-    panelBody.appendChild(sec('Language'));
+    if (!cfg) { panelBody.innerHTML = '<div class="empty-state">—</div>'; return; }
+    const item = (lbl, ctrl) => { const el = document.createElement('div'); el.className = 'mg-item'; el.innerHTML = '<label>' + lbl + '</label>'; el.appendChild(ctrl); return el; };
+    const sec = (txt) => { const el = document.createElement('div'); el.className = 'sec-title'; el.textContent = txt; return el; };
+    panelBody.appendChild(sec('General'));
     const sel = document.createElement('select'); sel.className = 'setting-sel';
-    (avail || []).forEach(loc => { const o = document.createElement('option'); o.value = loc; o.textContent = loc.toUpperCase(); if (loc === cfg.language) o.selected = true; sel.appendChild(o); });
+    [{ k: 'en', v: 'English' }, { k: 'fr', v: 'Français' }, { k: 'de', v: 'Deutsch' }].forEach(({ k, v }) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.language) o.selected = true; sel.appendChild(o); });
     sel.addEventListener('change', async () => { await safeInvoke('settings:set', 'language', sel.value); toast('Language: ' + sel.value); });
     panelBody.appendChild(item('Language', sel));
 
     panelBody.appendChild(sec('Search Engine'));
     const engSel = document.createElement('select'); engSel.className = 'setting-sel';
-    [{k:'google',v:'Google'},{k:'duckduckgo',v:'DuckDuckGo'},{k:'bing',v:'Bing'}].forEach(({k,v}) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.searchEngine) o.selected = true; engSel.appendChild(o); });
+    [{ k: 'google', v: 'Google' }, { k: 'duckduckgo', v: 'DuckDuckGo' }, { k: 'bing', v: 'Bing' }].forEach(({ k, v }) => { const o = document.createElement('option'); o.value = k; o.textContent = v; if (k === cfg.searchEngine) o.selected = true; engSel.appendChild(o); });
     engSel.addEventListener('change', async () => { await safeInvoke('settings:set', 'searchEngine', engSel.value); toast('Search: ' + engSel.value); });
     panelBody.appendChild(item('Search Engine', engSel));
 
@@ -188,9 +267,11 @@
 
   async function renderSiteSettings() {
     activeUrl = (await safeInvoke('tabs:getCurrentUrl'))?.url || '';
-    if (!activeUrl) return empty('No site loaded');
-    let host; try { host = new URL(activeUrl).hostname; } catch { return empty('—'); }
-    let rule; try { rule = await safeInvoke('site:getRule', host); } catch { rule = {}; }
+    if (!activeUrl) { panelBody.innerHTML = '<div class="empty-state">No site loaded</div>'; return; }
+    let host;
+    try { host = new URL(activeUrl).hostname; } catch { panelBody.innerHTML = '<div class="empty-state">—</div>'; return; }
+    let rule;
+    try { rule = await safeInvoke('site:getRule', host); } catch { rule = {}; }
     rule = rule || {};
     panelBody.innerHTML = '';
     const hostEl = document.createElement('div'); hostEl.className = 'mg-item';
@@ -209,7 +290,7 @@
     panelBody.appendChild(row('User Agent', uaInput));
   }
 
-  /* ── Event wiring ────────────────────────────────────────── */
+  /* ── Event wiring ── */
   backdrop.addEventListener('click', closeOverlay);
   $('menu-close-btn').addEventListener('click', closeOverlay);
   $('panel-back').addEventListener('click', closeOverlay);
@@ -219,11 +300,9 @@
   $('sm-downloads').addEventListener('click', () => openPanel('downloads', 'Downloads'));
   $('sm-settings').addEventListener('click', () => openPanel('settings', 'Settings'));
 
-  /* ── IPC events from main process ────────────────────────── */
+  /* ── IPC events ── */
   api.on('menu:changed', () => loadPanel());
 
-  // When the main process opens/closes the menu overlay view (sliding it in/out),
-  // toggle the DOM classes on side-menu, backdrop, and panel so CSS transitions work.
   api.on('menu:state', (isOpen) => {
     if (isOpen) {
       backdrop.classList.add('open');
@@ -238,6 +317,13 @@
     }
   });
 
-  /* ── Build initial menu ──────────────────────────────────── */
+  // Handle navigation from pill (e.g. extensions button)
+  api.on('menu:navigate', (panelType) => {
+    if (panelType) {
+      const titles = { extensions: 'Extensions', history: 'History', bookmarks: 'Bookmarks', downloads: 'Downloads', settings: 'Settings', siteSettings: 'Site Settings' };
+      openPanel(panelType, titles[panelType] || panelType);
+    }
+  });
+
   buildMenu();
 })();

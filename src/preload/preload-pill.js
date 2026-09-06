@@ -1,11 +1,10 @@
 'use strict';
-// Preload for the floating nav pill overlay view. Minimal surface: navigation
-// actions, menu/home forwarding to the chrome window, and tab state.
 const { contextBridge, ipcRenderer } = require('electron');
 
 const PILL_INVOKE = new Set([
   'tabs:goBack', 'tabs:goForward', 'tabs:create',
   'ui:showHome', 'ui:openMenu', 'ui:focusChrome',
+  'ui:openExtensions',
   'i18n:getStrings',
 ]);
 

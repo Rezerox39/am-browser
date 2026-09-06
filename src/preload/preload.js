@@ -19,6 +19,8 @@ const ALLOWED_INVOKE = new Set([
   'extensions:getAll', 'extensions:list', 'extensions:getInfo',
   'extensions:install', 'extensions:installZip', 'extensions:uninstall',
   'extensions:enable', 'extensions:disable', 'extensions:reload',
+  'extensions:openPopup', 'extensions:getPermissions', 'extensions:getManifest',
+  'extensions:getErrors',
 ]);
 
 const ALLOWED_ON = new Set([
