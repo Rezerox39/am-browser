@@ -170,9 +170,8 @@
   const PANEL_TYPES = ['Bookmarks','History','Downloads','Settings','Site Settings'];
   function handleMenu(action) {
     if (PANEL_TYPES.includes(action)) {
-      // Close the side menu visuals WITHOUT resetting inset(0) — the panel
-      // will immediately set its own inset.  This prevents the content view
-      // from briefly expanding to full width during the transition.
+      // Close the side menu visuals only — the panel opens right after and
+      // keeps the content view hidden, so no squeeze/flash occurs.
       _menuOpen = false;
       menuBackdrop.classList.remove('open');
       sideMenu.classList.remove('open');
@@ -187,38 +186,38 @@
     else if (action === 'Settings') openPanel('settings', 'Settings');
     else if (action === 'Site Settings') openPanel('siteSettings', 'Site Settings');
   }
-  const MENU_WIDTH = 340;
-  const PANEL_WIDTH = 420;
   let _menuOpen = false;
   function openMenu() {
     if (_menuOpen) return;          // already open — no-op (idempotent)
     _menuOpen = true;
+    // HIDE the content view so the menu slides OVER the window (like the nav
+    // pill floats above the page) instead of squeezing it to the left.
+    safeInvoke('tabs:hideContent');
     buildMenu();
     menuBackdrop.classList.add('open');
     sideMenu.classList.add('open');
-    safeInvoke('tabs:setInset', MENU_WIDTH);
   }
   function closeMenu() {
     if (!_menuOpen && !sideMenu.classList.contains('open')) return;  // already closed
     _menuOpen = false;
     menuBackdrop.classList.remove('open');
     sideMenu.classList.remove('open');
-    safeInvoke('tabs:setInset', 0);
+    safeInvoke('tabs:showContent');
   }
 
   function openPanel(type, title) {
     panelTitle.textContent = title; panelAction.innerHTML = '';
     panelSearch.classList.add('hidden'); panelSearch.value = '';
     if (type === 'history') panelSearch.classList.remove('hidden');
+    safeInvoke('tabs:hideContent');
     panelBackdrop.classList.add('open'); panel.classList.add('open');
     currentPanel = type;
-    safeInvoke('tabs:setInset', PANEL_WIDTH);
     loadPanel();
   }
   function closePanel() {
     panelBackdrop.classList.remove('open');
     panel.classList.remove('open');
-    safeInvoke('tabs:setInset', 0);
+    safeInvoke('tabs:showContent');
     // Reset panel content after slide-out completes so titles/items don't stick
     const cleanup = () => { currentPanel = ''; panelTitle.textContent = ''; panelBody.innerHTML = ''; };
     const handler = (e) => { if (e.propertyName === 'transform') { panel.removeEventListener('transitionend', handler); cleanup(); } };

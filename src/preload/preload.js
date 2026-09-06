@@ -5,7 +5,7 @@ const ALLOWED_INVOKE = new Set([
   'tabs:getAll', 'tabs:getActiveId', 'tabs:getCurrentUrl',
   'tabs:create', 'tabs:close', 'tabs:setActive', 'tabs:navigate',
   'tabs:reload', 'tabs:stop', 'tabs:goBack', 'tabs:goForward',
-  'tabs:showHome', 'tabs:showContent', 'tabs:setInset',
+  'tabs:showHome', 'tabs:showContent', 'tabs:hideContent',
   'bookmarks:getAll', 'bookmarks:getByUrl', 'bookmarks:add', 'bookmarks:remove',
   'history:getRecent', 'history:search', 'history:clear',
   'downloads:getAll', 'downloads:remove', 'downloads:clear',

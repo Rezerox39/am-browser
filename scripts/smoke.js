@@ -176,21 +176,21 @@ app.whenReady().then(async () => {
     const s5 = state();
     check('tab chip close removes a tab', s5.count === countMid - 1, `count=${s5.count}`);
 
-    // 6. Pill menu opens the chrome side menu; the content view shrinks (inset)
-    // so the panel is clickable; closing the menu restores the view AND the
-    // pill survives with the same bounds (pill-destruction regression test)
+    // 6. Pill menu opens the chrome side menu; the content view is HIDDEN
+    // (no inset squeeze) so the menu slides over the window like the pill
+    // floats over the page. Closing shows the content again.
     await clickPill('pillMenu');
     await sleep(400);
     const menuOpen = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
     const view = tabs.getTabView(tabs.getActiveTab().id);
-    const bounds = view ? view.view.getBounds() : null;
+    const contentVisible = view ? view._visible : false;
     const winSize = win.getSize();
     check('pill menu opens side menu', menuOpen === true);
-    check('menu inset shrinks view', bounds && bounds.width === winSize[0] - 340, `viewW=${bounds ? bounds.width : '?'} winW=${winSize[0]}`);
+    check('menu hides content view (no squeeze)', contentVisible === false, `visible=${contentVisible}`);
     await clickSel('#menu-close-btn');
     await sleep(400);
-    const bounds2 = tabs.getTabView(tabs.getActiveTab().id).view.getBounds();
-    check('closing menu restores view width', bounds2.width >= winSize[0] - 2, `viewW=${bounds2.width}`);
+    const contentVisibleAfter = tabs.getTabView(tabs.getActiveTab().id)._visible;
+    check('closing menu shows content view', contentVisibleAfter === true);
     const pillBoundsAfter = tabs.getPillView() ? tabs.getPillView().getBounds() : null;
     check('pill survives menu open/close',
       pillBoundsAfter && pillBoundsAfter.x === pillBounds.x && pillBoundsAfter.y === pillBounds.y,
@@ -205,16 +205,14 @@ app.whenReady().then(async () => {
 
     // 6b. ui:esc IPC closes the menu — this is the handler that real OS Escape
     // key reaches via main-process before-input-event -> forwardGlobalKey.
-    // sendInputEvent doesn't trigger before-input-event in headless Electron,
-    // so we test the renderer handler directly via webContents.send.
     await clickPill('pillMenu');
     await sleep(400);
     await win.webContents.send('ui:esc');
     await sleep(400);
     const escapedFromIpc = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
-    const escBounds = tabs.getTabView(tabs.getActiveTab().id).view.getBounds();
+    const escContentVisible = tabs.getTabView(tabs.getActiveTab().id)._visible;
     check('ui:esc IPC closes menu', escapedFromIpc === false);
-    check('ui:esc restores view width', escBounds.width >= winSize[0] - 2, `viewW=${escBounds.width}`);
+    check('ui:esc shows content view', escContentVisible === true);
 
     // 6d. Pill menu button toggles (clicking menu button when already open closes)
     await clickPill('pillMenu');
@@ -250,19 +248,16 @@ app.whenReady().then(async () => {
     await rendererEval('document.querySelector("#panel-back").dispatchEvent(new MouseEvent("click", {bubbles:true}))');
     await sleep(400);
 
-    // 9. Menu -> panel transition keeps inset continuous (no full-width flash) —
-    // the panel inset (420) must hold when opening from the menu, and the menu
-    // must close without resetting to 0 first.
+    // 9. Menu -> panel: content stays hidden through the transition
     await clickSel('#navMenu');
     await sleep(400);
-    const viewDuring = tabs.getTabView(tabs.getActiveTab().id);
     await clickSel('.sheet-item:nth-child(2)'); // Bookmarks
     await sleep(400);
-    const panelWidthNow = tabs.getTabView(tabs.getActiveTab().id).view.getBounds().width;
-    const winWNow = win.getSize()[0];
-    check('menu->panel keeps panel inset (no full-width flash)', panelWidthNow === winWNow - 420, `viewW=${panelWidthNow} winW=${winWNow}`);
+    const viewDuring = tabs.getTabView(tabs.getActiveTab().id);
+    const stillHidden = viewDuring ? viewDuring._visible : false;
     const panelOpen2 = await rendererEval('document.querySelector("#panel").classList.contains("open")');
     const menuClosed2 = await rendererEval('!document.querySelector("#side-menu").classList.contains("open")');
+    check('content stays hidden during menu->panel', stillHidden === false);
     check('panel open after menu->panel nav', panelOpen2 === true);
     check('menu closed after opening panel', menuClosed2 === true);
     await rendererEval('document.querySelector("#panel-back").dispatchEvent(new MouseEvent("click", {bubbles:true}))');

@@ -40,7 +40,8 @@ function register(win) {
   // ── View visibility / chrome overlay insets ───────────────────
   registerChannel('tabs:showHome', () => { tabs.showHome(); });
   registerChannel('tabs:showContent', () => { tabs.showContent(); });
-  registerChannel('tabs:setInset', (e, px) => { tabs.setRightInset(px); });
+  registerChannel('tabs:hideContent', () => { tabs.hideActiveContent(); });
+  registerChannel('tabs:showContent', () => { tabs.showActiveContent(); });
 
   // ── Bookmarks ─────────────────────────────────────────────────
   registerChannel('bookmarks:getAll', () => bookmarks.getAll());

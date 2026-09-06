@@ -15,9 +15,10 @@ let tabs = [];
 let activeTabId = null;
 let chromeWin = null;
 let uiMode = 'home'; // 'home' | 'content' — what the chrome UI is showing
-let rightInset = 0; // px reserved for slide-in panels (menu/settings)
+// rightInset removed — menu/panel are overlays (content view hidden during overlay)
 let pillView = null; // transparent floating nav pill overlay (topmost layer)
 let _fullscreen = false;
+let _contentHidden = false; // true when menu/panel overlay is covering content
 
 // The floating pill is its own transparent WebContentsView added AFTER every
 // content view, so it always paints on top of the page (Electron composites
@@ -226,11 +227,10 @@ class Tab {
       return
     }
     // Normal mode: full-bleed below the top chrome (tab strip + url bar).
-    const w = Math.max(200, width - rightInset)
     this.view.setBounds({
       x: 0,
       y: TOOLBAR_Y,
-      width: w,
+      width: Math.max(200, width),
       height: Math.max(200, height - TOOLBAR_Y),
     })
   }
@@ -319,9 +319,9 @@ function select(recordId) {
 
   activeTabId = recordId
 
-  // Only show the view if there's a URL (so home stays clear)
+  // Only show the view if there's a URL (so home stays clear) and no overlay
   if (rec._tab && rec.url) {
-    rec._tab.show()
+    if (!_contentHidden) rec._tab.show()
     uiMode = 'content'
   } else {
     uiMode = 'home'
@@ -407,10 +407,17 @@ function repositionActiveTab() {
   const active = getActiveTab()
   if (active && active._tab) active._tab.invalidateLayout()
 }
-function setRightInset(px) {
-  rightInset = Math.max(0, Math.min(parseInt(px, 10) || 0, 600))
-  layoutChrome()
+function hideActiveContent() {
+  _contentHidden = true
+  const active = getActiveTab()
+  if (active && active._tab && active._tab._visible) active._tab.hide()
 }
+function showActiveContent() {
+  _contentHidden = false
+  const active = getActiveTab()
+  if (active && active._tab) active._tab.show()
+}
+function isContentHidden() { return _contentHidden }
 function setLifecycleCallbacks(cb) {
   if (cb && typeof cb === 'object') lifecycle = { ...lifecycle, ...cb }
 }
@@ -570,6 +577,7 @@ module.exports = {
   goBack, goForward, getActiveTab, getAll, getRecord, getTabView,
   setChromeWindow, getStateForContentsId, broadcast,
   showHome, showContent, repositionActiveTab, layoutChrome,
-  setRightInset, setLifecycleCallbacks, getPillView, isFullscreen, enterFullscreen, leaveFullscreen,
+  setLifecycleCallbacks, getPillView, isFullscreen, enterFullscreen, leaveFullscreen,
+  hideActiveContent, showActiveContent, isContentHidden,
   PILL,
 };

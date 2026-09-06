@@ -70,7 +70,7 @@ AM follows the architecture proven by
    content view and the pill, and re-asserts the pill on top. It runs on window resize/move, tab
    create/close/select, and panel/menu open/close — so the pill can never be "destroyed" by a menu
    cycle (regression-covered by `scripts/smoke.js`).
-7. **Shrink the content view only when a right slide-in panel/menu is open** (`tabs:setInset`):
+7. **Hide the content view when a slide-in panel/menu overlay is open** (`tabs:hideContent`/`tabs:showContent`): the content is hidden so the chrome DOM menu slides over the window without squeezing the view.
    the panel stays DOM-clickable; the pill is unaffected and remains on top.
 8. **Home mode**: when the active tab has no URL (fresh tab) or the user presses the pill's Home,
    the content view is hidden (`uiMode = 'home'`), so the whole home screen — including the search
