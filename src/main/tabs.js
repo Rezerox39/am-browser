@@ -56,6 +56,7 @@ class Tab {
     this.window = parentWindow
     this.webContents = this.view.webContents
     this._visible = false
+    this._destroyed = false
 
     // Attach ONCE — never remove from contentView. Visibility is toggled with
     // setVisible(), following the electron-browser-shell architecture, so the
@@ -69,44 +70,50 @@ class Tab {
 
   setupEvents() {
     const wc = this.webContents
+    const alive = () => !this._destroyed && this.webContents && !this.webContents.isDestroyed()
 
-    wc.on('did-navigate', (e, url) => {
+    // Any event that can fire on a webContents AFTER destroy() (Electron queues
+    // these) must not touch destroyed objects — that was the Windows
+    // "Object has been destroyed" crash in broadcast().
+    const safe = (fn) => () => { if (!alive()) return; try { fn() } catch (e) { logger.warn('tabs', 'event handler failed', { error: e.message }) } }
+
+    wc.on('did-navigate', safe(() => {
       if (this._record) {
-        this._record.url = url
-        history.add({ url, title: this._record.title || url })
+        this._record.url = wc.getURL()
+        history.add({ url: wc.getURL(), title: this._record.title || wc.getURL() })
       }
       broadcast()
-    })
-    wc.on('did-navigate-in-page', (e, url) => {
+    }), { once: false })
+    wc.on('did-navigate-in-page', safe(() => {
       if (this._record) {
-        this._record.url = url
-        history.add({ url, title: this._record.title || url })
+        this._record.url = wc.getURL()
+        history.add({ url: wc.getURL(), title: this._record.title || wc.getURL() })
       }
       broadcast()
-    })
-    wc.on('page-title-updated', (e, title) => {
+    }))
+    wc.on('page-title-updated', safe((e, title) => {
       if (this._record) this._record.title = title
       broadcast()
-    })
-    wc.on('page-favicon-updated', (e, favicons) => {
+    }))
+    wc.on('page-favicon-updated', safe((e, favicons) => {
       if (this._record && favicons && favicons.length > 0) this._record.favicon = favicons[0]
-    })
-    wc.on('did-start-loading', () => {
+    }))
+    wc.on('did-start-loading', safe(() => {
       if (this._record) this._record.loading = true
       broadcast()
-    })
-    wc.on('did-stop-loading', () => {
+    }))
+    wc.on('did-stop-loading', safe(() => {
       if (this._record) this._record.loading = false
       broadcast()
-    })
-    wc.on('did-fail-load', (e, errorCode, errorDesc, validatedUrl) => {
+    }))
+    wc.on('did-fail-load', safe((e, errorCode, errorDesc, validatedUrl) => {
       if (this._record) {
         this._record.loading = false
         this._record.title = 'Error — ' + (errorDesc || errorCode)
       }
       logger.warn('tabs', 'Page failed to load', { url: validatedUrl, errorDesc })
       broadcast()
-    })
+    }))
 
     wc.setWindowOpenHandler(({ url }) => {
       if (!url || url.startsWith('about:') || url.startsWith('javascript:')) return { action: 'deny' }
@@ -116,6 +123,7 @@ class Tab {
     })
 
     wc.on('before-input-event', (event, input) => {
+      forwardGlobalKey(input)
       const mods = input.control || input.meta
       if (!mods) return
       if (input.key === 't') {
@@ -232,12 +240,12 @@ class Tab {
   }
 
   destroy() {
-    this.hide()
-    try { this.window.contentView.removeChildView(this.view) } catch {}
-    if (!this.webContents.isDestroyed()) {
-      this.webContents.destroy()
-    }
+    if (this._destroyed) return
+    this._destroyed = true
+    try { this.stopResizeListener() } catch {}
+    try { if (this.view && this.window && !this.window.isDestroyed()) this.window.contentView.removeChildView(this.view) } catch {}
     this.view = undefined
+    try { if (this.webContents && !this.webContents.isDestroyed()) this.webContents.destroy() } catch {}
     this.webContents = undefined
   }
 }
@@ -324,6 +332,7 @@ function close(recordId) {
   const idx = tabs.findIndex((t) => t.id === recordId)
   if (idx === -1) return
   const rec = tabs[idx]
+  if (!rec || !rec._tab) { tabs.splice(idx, 1); return }
   try { lifecycle.onDestroyed(rec) } catch {}
   rec._tab.destroy()
   tabs.splice(idx, 1)
@@ -420,6 +429,9 @@ function createPillOverlay() {
     pillView.setVisible(false)
     chromeWin.contentView.addChildView(pillView)
     layoutPill()
+    pillView.webContents.on('before-input-event', (event, input) => {
+      forwardGlobalKey(input)
+    })
     pillView.webContents.loadFile(path.join(__dirname, '..', 'renderer', 'pill.html')).catch((err) => {
       logger.warn('tabs', 'pill.html failed to load', { error: err.message })
     })
@@ -472,7 +484,10 @@ function getPillView() {
 
 /* ── Broadcast ─────────────────────────────────────────────── */
 function broadcast() {
-  if (!chromeWin || chromeWin.webContents.isDestroyed()) return
+  if (!chromeWin || chromeWin.isDestroyed()) return
+  let chromeOK = false
+  try { chromeOK = !chromeWin.webContents.isDestroyed() } catch { return }
+  if (!chromeOK) return
   const active = getActiveTab()
   let canBack = false
   let canFwd = false
@@ -481,9 +496,23 @@ function broadcast() {
     try { canBack = view.webContents.canGoBack(); canFwd = view.webContents.canGoForward() } catch {}
   }
   const args = [getAll(), active?.id || null, active?.url || '', active?.title || '', uiMode, canBack, canFwd]
-  chromeWin.webContents.send('tabs:changed', ...args)
+  try { if (!chromeWin.webContents.isDestroyed()) chromeWin.webContents.send('tabs:changed', ...args) } catch {}
   if (pillView && pillView.webContents && !pillView.webContents.isDestroyed()) {
-    pillView.webContents.send('tabs:changed', ...args)
+    try { pillView.webContents.send('tabs:changed', ...args) } catch {}
+  }
+}
+
+// Forward Escape (and other hard-to-reach keys) from ANY WebContentsView to the
+// chrome renderer, which owns the menu/panel close logic. Without this, pressing
+// Escape while the page or the pill has focus never closes the slide-in menu and
+// the content view stays shrunken (the "menu won't close / breaks everything"
+// report).
+function forwardGlobalKey(input) {
+  if (!input || input.type !== 'keyDown') return
+  if (input.key === 'Escape' || input.key === 'Esc') {
+    try { if (chromeWin && !chromeWin.isDestroyed() && !chromeWin.webContents.isDestroyed()) {
+      chromeWin.webContents.send('ui:esc')
+    } } catch {}
   }
 }
 

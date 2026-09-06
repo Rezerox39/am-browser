@@ -131,20 +131,23 @@ function register(win) {
 
   // ── Floating pill bridges ─────────────────────────────────────
   // The pill overlay view forwards UI actions to the chrome window renderer.
-  registerChannel('ui:showHome', () => { try { win.webContents.send('ui:showHome'); } catch {} });
-  registerChannel('ui:openMenu', () => { try { win.webContents.send('ui:openMenu'); } catch {} });
+  registerChannel('ui:showHome', () => {
+    try { if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('ui:showHome') } catch {}
+  });
+  registerChannel('ui:openMenu', () => {
+    try { if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('ui:openMenu') } catch {}
+  });
   registerChannel('ui:focusChrome', () => {
-    try { if (!win.isDestroyed()) { win.focus(); win.webContents.focus(); } } catch {}
+    try { if (!win.isDestroyed() && !win.webContents.isDestroyed()) { win.focus(); win.webContents.focus(); } } catch {}
   });
 
   // ── Window controls ───────────────────────────────────────────
-  registerChannel('window:minimize', () => { win.minimize(); });
+  registerChannel('window:minimize', () => { try { if (!win.isDestroyed()) win.minimize() } catch {} });
   registerChannel('window:maximize', () => {
-    if (win.isMaximized()) win.unmaximize();
-    else win.maximize();
+    try { if (!win.isDestroyed()) { if (win.isMaximized()) win.unmaximize(); else win.maximize(); } } catch {}
   });
-  registerChannel('window:close', () => { win.close(); });
-  registerChannel('window:isMaximized', () => win.isMaximized());
+  registerChannel('window:close', () => { try { if (!win.isDestroyed()) win.close() } catch {} });
+  registerChannel('window:isMaximized', () => { try { return !win.isDestroyed() && win.isMaximized() } catch { return false } });
 
   // ── i18n ──────────────────────────────────────────────────────
   registerChannel('i18n:getAvailable', () => getAvailable());

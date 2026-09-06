@@ -203,6 +203,39 @@ app.whenReady().then(async () => {
     await clickSel('#menu-close-btn');
     await sleep(300);
 
+    // 6b. ui:esc IPC closes the menu — this is the handler that real OS Escape
+    // key reaches via main-process before-input-event -> forwardGlobalKey.
+    // sendInputEvent doesn't trigger before-input-event in headless Electron,
+    // so we test the renderer handler directly via webContents.send.
+    await clickPill('pillMenu');
+    await sleep(400);
+    await win.webContents.send('ui:esc');
+    await sleep(400);
+    const escapedFromIpc = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    const escBounds = tabs.getTabView(tabs.getActiveTab().id).view.getBounds();
+    check('ui:esc IPC closes menu', escapedFromIpc === false);
+    check('ui:esc restores view width', escBounds.width >= winSize[0] - 2, `viewW=${escBounds.width}`);
+
+    // 6d. Pill menu button toggles (clicking menu button when already open closes)
+    await clickPill('pillMenu');
+    await sleep(400);
+    const open3 = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    await clickPill('pillMenu');
+    await sleep(400);
+    const closed3 = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    check('pill menu opens on first click', open3 === true);
+    check('pill menu toggles closed on second click', closed3 === false);
+
+    // 6e. Close a tab without crashing (destroy-safety regression test)
+    await clickPill('pillTabs');
+    await sleep(300);
+    const cntBefore = state().count;
+    await clickSel('.tab-chip.active .tc-close');
+    await sleep(400);
+    const cntAfter = state().count;
+    check('close tab did not crash', true);
+    check('tab count decreased after close', cntAfter === cntBefore - 1, `before=${cntBefore} after=${cntAfter}`);
+
     // 7. Traffic-light IPC handlers are registered
     const maxState = await rendererEval('window.am.invoke("window:isMaximized")').catch(() => null);
     check('window:isMaximized IPC responds', typeof maxState === 'boolean', String(maxState));

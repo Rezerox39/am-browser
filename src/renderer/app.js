@@ -179,17 +179,42 @@
   }
   const MENU_WIDTH = 340;
   const PANEL_WIDTH = 420;
-  function openMenu() { buildMenu(); menuBackdrop.classList.add('open'); sideMenu.classList.add('open'); safeInvoke('tabs:setInset', MENU_WIDTH); }
-  function closeMenu() { menuBackdrop.classList.remove('open'); sideMenu.classList.remove('open'); safeInvoke('tabs:setInset', 0); }
+  let _menuOpen = false;
+  function openMenu() {
+    if (_menuOpen) return;          // already open — no-op (idempotent)
+    _menuOpen = true;
+    buildMenu();
+    menuBackdrop.classList.add('open');
+    sideMenu.classList.add('open');
+    safeInvoke('tabs:setInset', MENU_WIDTH);
+  }
+  function closeMenu() {
+    if (!_menuOpen && !sideMenu.classList.contains('open')) return;  // already closed
+    _menuOpen = false;
+    menuBackdrop.classList.remove('open');
+    sideMenu.classList.remove('open');
+    safeInvoke('tabs:setInset', 0);
+  }
 
   function openPanel(type, title) {
     panelTitle.textContent = title; panelAction.innerHTML = '';
     panelSearch.classList.add('hidden'); panelSearch.value = '';
     if (type === 'history') panelSearch.classList.remove('hidden');
     panelBackdrop.classList.add('open'); panel.classList.add('open');
-    currentPanel = type; closeMenu(); safeInvoke('tabs:setInset', PANEL_WIDTH); loadPanel();
+    currentPanel = type;
+    // close menu WITHOUT calling setInset(0) — panel replaces the inset immediately
+    _menuOpen = false;
+    menuBackdrop.classList.remove('open');
+    sideMenu.classList.remove('open');
+    safeInvoke('tabs:setInset', PANEL_WIDTH);
+    loadPanel();
   }
-  function closePanel() { panelBackdrop.classList.remove('open'); panel.classList.remove('open'); currentPanel = ''; safeInvoke('tabs:setInset', 0); }
+  function closePanel() {
+    panelBackdrop.classList.remove('open');
+    panel.classList.remove('open');
+    currentPanel = '';
+    safeInvoke('tabs:setInset', 0);
+  }
   async function loadPanel() {
     if (currentPanel === 'history') return renderHistory();
     if (currentPanel === 'bookmarks') return renderBookmarks();
@@ -266,7 +291,8 @@
   // The floating nav pill lives in its own transparent overlay view
   // (src/renderer/pill.html). The chrome window reacts to it via IPC bridges.
   api.on('ui:showHome', () => enterHome());
-  api.on('ui:openMenu', () => openMenu());
+  api.on('ui:openMenu', () => { _menuOpen ? closeMenu() : openMenu(); });
+  api.on('ui:esc', () => { closeMenu(); closePanel(); });
   $('menu-history').addEventListener('click', () => handleMenu('History'));
   $('menu-bookmarks').addEventListener('click', () => handleMenu('Bookmarks'));
   $('menu-downloads').addEventListener('click', () => handleMenu('Downloads'));

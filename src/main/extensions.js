@@ -60,10 +60,9 @@ async function init(win) {
     modulePath,
 
     createTab: async (details) => {
-      // tabs.create() loads the URL once; no extra loadURL call needed.
       const record = tabs.create({ url: details.url || '' });
       const tabView = tabs.getTabView(record.id);
-      if (!tabView) throw new Error('Tab creation failed');
+      if (!tabView || !tabView.webContents || tabView.webContents.isDestroyed()) throw new Error('Tab creation failed');
       return [tabView.webContents, chromeWin];
     },
 
@@ -73,8 +72,11 @@ async function init(win) {
     },
 
     removeTab: (tab, browserWindow) => {
+      try {
+        if (tab && tab.isDestroyed()) return
+      } catch {}
       const rec = tabs.getStateForContentsId(tab.id);
-      if (rec && rec.tabId) tabs.close(rec.tabId);
+      if (rec && rec.tabId) try { tabs.close(rec.tabId) } catch {}
     },
 
     createWindow: async (details) => {
@@ -98,12 +100,14 @@ async function init(win) {
   tabs.setLifecycleCallbacks({
     onCreated(rec) {
       try {
-        if (rec && rec._tab && rec._tab.webContents) extensions.addTab(rec._tab.webContents, chromeWin)
+        if (rec && rec._tab && rec._tab.webContents && !rec._tab.webContents.isDestroyed())
+          extensions.addTab(rec._tab.webContents, chromeWin)
       } catch (e) { logger.warn('extensions', 'addTab failed', { error: e.message }) }
     },
     onSelected(rec) {
       try {
-        if (rec && rec._tab && rec._tab.webContents) extensions.selectTab(rec._tab.webContents)
+        if (rec && rec._tab && rec._tab.webContents && !rec._tab.webContents.isDestroyed())
+          extensions.selectTab(rec._tab.webContents)
       } catch (e) { logger.warn('extensions', 'selectTab failed', { error: e.message }) }
     },
   });
