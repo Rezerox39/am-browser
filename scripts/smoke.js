@@ -176,9 +176,10 @@ app.whenReady().then(async () => {
     const s5 = state();
     check('tab chip close removes a tab', s5.count === countMid - 1, `count=${s5.count}`);
 
-    // 6. Pill menu opens the chrome side menu; the content view is HIDDEN
-    // (no inset squeeze) so the menu slides over the window like the pill
-    // floats over the page. Closing shows the content again.
+    // 6. Navigate to a page so the content view is visible, then test menu
+    // overlay hide/show. The menu slides over the window (no squeeze).
+    await setHomeAndEnter('example');
+    await sleep(1200);
     await clickPill('pillMenu');
     await sleep(400);
     const menuOpen = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');

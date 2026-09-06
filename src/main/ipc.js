@@ -37,9 +37,8 @@ function register(win) {
   registerChannel('tabs:goBack', (e, id) => { tabs.goBack(id); });
   registerChannel('tabs:goForward', (e, id) => { tabs.goForward(id); });
 
-  // ── View visibility / chrome overlay insets ───────────────────
+  // ── View visibility / chrome overlay ──────────────────────────
   registerChannel('tabs:showHome', () => { tabs.showHome(); });
-  registerChannel('tabs:showContent', () => { tabs.showContent(); });
   registerChannel('tabs:hideContent', () => { tabs.hideActiveContent(); });
   registerChannel('tabs:showContent', () => { tabs.showActiveContent(); });
 

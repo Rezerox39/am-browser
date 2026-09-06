@@ -192,6 +192,24 @@ class Tab {
     this._visible = false
   }
 
+  // Overlay-safe hide: keep the GPU surface alive by moving off-screen instead
+  // of setVisible(false).  This avoids the black repaint on Windows.
+  hideForOverlay() {
+    this._hiddenForOverlay = true
+    this.stopResizeListener()
+    try {
+      const [w, h] = this.window.getSize()
+      this.view.setBounds({ x: 0, y: h + 50, width: Math.max(200, w), height: 40 })
+    } catch {}
+    this._visible = false
+  }
+  showFromOverlay() {
+    this._hiddenForOverlay = false
+    this._visible = true
+    this.invalidateLayout()
+    this.startResizeListener()
+  }
+
   reload() {
     this.webContents.reload()
   }
@@ -410,12 +428,14 @@ function repositionActiveTab() {
 function hideActiveContent() {
   _contentHidden = true
   const active = getActiveTab()
-  if (active && active._tab && active._tab._visible) active._tab.hide()
+  if (active && active._tab && active._tab._visible) active._tab.hideForOverlay()
 }
 function showActiveContent() {
   _contentHidden = false
   const active = getActiveTab()
-  if (active && active._tab) active._tab.show()
+  if (active && active._tab && active._tab._hiddenForOverlay) {
+    active._tab.showFromOverlay()
+  }
 }
 function isContentHidden() { return _contentHidden }
 function setLifecycleCallbacks(cb) {
