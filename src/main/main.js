@@ -10,6 +10,7 @@ const downloadsManager = require('./downloads');
 const ipcHandler = require('./ipc');
 const tabsManager = require('./tabs');
 const extensionsManager = require('./extensions');
+const extManager = require('./extensions/manager');
 const logger = require('./logger');
 const { setLocale } = require('../shared/i18n');
 const { protocol } = require('electron');
@@ -78,6 +79,89 @@ ${allowed.slice(-10).map(r => '<div class="match allowed"><span class="tag allow
   });
 }
 
+function serveExtensionsPage() {
+  const extManager = require('./extensions/manager');
+  const exts = extManager.listExtensions();
+  const compatibilityTable = [
+    { api: 'Manifest V2/V3', status: '✓' },
+    { api: 'Content scripts', status: '✓' },
+    { api: 'chrome.storage.local', status: '✓' },
+    { api: 'chrome.tabs (partial)', status: '⚠ Partial' },
+    { api: 'chrome.webRequest', status: '✓' },
+    { api: 'chrome.runtime', status: '✓' },
+    { api: 'chrome.contextMenus', status: '✓' },
+    { api: 'chrome.action (popups)', status: '✓' },
+    { api: 'Service workers (MV3)', status: '✓' },
+    { api: 'chrome.management', status: '⚠ Limited' },
+    { api: 'DeclarativeNetRequest', status: '⚠ Verify' },
+    { api: 'Chrome Web Store direct', status: '✗ Not supported' },
+  ];
+
+  const extRows = exts.length > 0
+    ? exts.map(e => '<div class="ext-row">' +
+        '<span class="ext-status ' + (e.enabled ? 'on' : 'off') + '"></span>' +
+        '<div><strong>' + (e.name || 'Unknown') + '</strong> <span class="version">v' + e.version + '</span>' +
+        '<div class="ext-id">' + e.id + '</div>' +
+        (e.description ? '<div class="ext-desc">' + e.description + '</div>' : '') +
+        '<div class="ext-perms">Permissions: ' + (e.permissions && e.permissions.length > 0 ? e.permissions.join(', ') : 'none') + '</div>' +
+        '</div></div>'
+      ).join('')
+    : '<div class="ext-row"><em>No extensions installed</em></div>';
+
+  const compatRows = compatibilityTable.map(c =>
+    '<div class="compat-row"><span class="compat-api">' + c.api + '</span><span class="compat-status">' + c.status + '</span></div>'
+  ).join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>AM — Extensions</title>
+<style>
+  body { background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; margin: 0; }
+  h1 { font-size: 20px; margin-bottom: 24px; color: #5a83ff; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #606060; margin: 24px 0 12px; border-bottom: 1px solid #1a1a1a; padding-bottom: 6px; }
+  .ext-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid #1a1a1a; border-radius: 10px; margin: 8px 0; background: rgba(255,255,255,0.02); }
+  .ext-status { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .ext-status.on { background: #28c840; }
+  .ext-status.off { background: #555; }
+  .version { font-size: 12px; color: #a0a0a0; }
+  .ext-id { font-size: 11px; color: #606060; font-family: monospace; margin-top: 2px; }
+  .ext-desc { font-size: 12px; color: #a0a0a0; margin-top: 4px; }
+  .ext-perms { font-size: 11px; color: #606060; margin-top: 4px; }
+  .compat-row { display: flex; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid #1a1a1a; font-size: 13px; }
+  .compat-api { color: #e0e0e0; }
+  .compat-status { color: #a0a0a0; }
+  .compat-status:contains("✓") { color: #28c840; }
+  .info { background: rgba(90,131,255,0.1); border: 1px solid rgba(90,131,255,0.2); border-radius: 8px; padding: 16px; margin-top: 24px; font-size: 13px; line-height: 1.6; }
+  .info strong { color: #5a83ff; }
+</style></head><body>
+<h1>Extensions</h1>
+
+<h2>Installed (${exts.length})</h2>
+${extRows}
+
+<h2>Electron Extension API Compatibility</h2>
+${compatRows}
+
+<h2>Notes</h2>
+<div class="info">
+  <strong>Chrome Web Store:</strong> Direct Web Store installation is supported via
+  <code>electron-chrome-web-store</code>. However, not all store extensions will work
+  because Electron does not aim for complete Chrome compatibility.<br><br>
+  <strong>Content scripts:</strong> MV3 content scripts declared in manifest.json are
+  injected by Electron's extension system into matching pages automatically.<br><br>
+  <strong>Extension popups:</strong> Click an extension's icon in the toolbar to open
+  its popup. Popups are rendered as native overlays using Electron's WebContentsView.<br><br>
+  <strong>Developer mode:</strong> Install unpacked extensions by copying them into
+  <code>${require('electron').app.getPath('userData')}/extensions/installed/</code>
+  or use the Install button in the toolbar menu.
+</div>
+</body></html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: { 'content-type': 'text/html; charset=utf-8' },
+  });
+}
+
 // Make errors VISIBLE — if anything fails before the window shows, the user sees a native dialog.
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
@@ -128,6 +212,9 @@ app.whenReady().then(async () => {
     if (url === 'am://adblock') {
       return serveAdblockPage();
     }
+    if (url === 'am://extensions') {
+      return serveExtensionsPage();
+    }
     return new Response('Unknown am:// page', { status: 404, headers: { 'content-type': 'text/plain' } });
   });
   try {
@@ -146,7 +233,18 @@ app.whenReady().then(async () => {
     ipcHandler.register(win);
     tabsManager.init({ window: win, url: cfg.homePage === 'start' ? '' : cfg.homePage });
 
-    // Initialize extension support
+    // Initialize extension manager (persistent registry)
+    extManager.init();
+
+    // Load persisted extensions from registry
+    try {
+      const loadResults = await extManager.loadPersistedExtensions();
+      logger.info('extensions', 'Loaded ' + loadResults.length + ' persisted extension(s)');
+    } catch (e) {
+      logger.warn('extensions', 'Persisted extension load failed', { error: e.message });
+    }
+
+    // Initialize extension support (ElectronChromeExtensions + web store)
     try {
       await extensionsManager.init(win);
       extensionsManager.wireContextMenu();

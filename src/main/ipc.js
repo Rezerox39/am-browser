@@ -169,6 +169,69 @@ function register(win) {
   registerChannel('extensions:getAll', () => {
     return require('./extensions').getExtensionList();
   });
+  // ── Extensions ────────────────────────────────────────────────
+  registerChannel('extensions:list', () => {
+    const extManager = require('./extensions/manager');
+    return extManager.listExtensions();
+  });
+  registerChannel('extensions:getInfo', (e, id) => {
+    const extManager = require('./extensions/manager');
+    return extManager.getExtensionInfo(id);
+  });
+  registerChannel('extensions:install', async (e, dirPath) => {
+    const extManager = require('./extensions/manager');
+    try {
+      const id = await extManager.installFromDir(dirPath);
+      return { success: true, id };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  registerChannel('extensions:installZip', async (e, zipPath) => {
+    const installer = require('./extensions/installer');
+    try {
+      const id = await installer.installFromZip(zipPath);
+      return { success: true, id };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  registerChannel('extensions:uninstall', async (e, id) => {
+    const extManager = require('./extensions/manager');
+    try {
+      await extManager.uninstall(id);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  registerChannel('extensions:enable', async (e, id) => {
+    const extManager = require('./extensions/manager');
+    try {
+      await extManager.enable(id);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  registerChannel('extensions:disable', async (e, id) => {
+    const extManager = require('./extensions/manager');
+    try {
+      await extManager.disable(id);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  registerChannel('extensions:reload', async (e, id) => {
+    const extManager = require('./extensions/manager');
+    try {
+      await extManager.reload(id);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
 }
 
 module.exports = { register };

@@ -16,13 +16,16 @@ const ALLOWED_INVOKE = new Set([
   'window:minimize', 'window:maximize', 'window:close', 'window:isMaximized',
   'i18n:getAvailable', 'i18n:setLocale', 'i18n:getStrings',
   'adblock:getStats', 'adblock:isEnabled',
-  'extensions:getAll',
+  'extensions:getAll', 'extensions:list', 'extensions:getInfo',
+  'extensions:install', 'extensions:installZip', 'extensions:uninstall',
+  'extensions:enable', 'extensions:disable', 'extensions:reload',
 ]);
 
 const ALLOWED_ON = new Set([
   'tabs:changed', 'tabs:focusAddressBar', 'tabs:bookmarkToggled',
   'window:maximized', 'downloads:changed',
   'ui:showHome', 'ui:openMenu', 'ui:esc', 'ui:fullscreen',
+  'extensions:updated',
   'menu:state',
 ]);
 

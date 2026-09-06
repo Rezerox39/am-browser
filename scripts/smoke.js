@@ -94,6 +94,16 @@ async function clickMenu(id) {
   })()`);
 }
 
+// Safe IPC invoke helper for tests
+async function safeInvoke(channel, ...args) {
+  try {
+    const result = await rendererEval(`window.am.invoke(${JSON.stringify(channel)}, ${args.map(a => JSON.stringify(a)).join(', ')})`);
+    return result;
+  } catch (e) {
+    return undefined;
+  }
+}
+
 app.whenReady().then(async () => {
   try {
     const config = require('../src/main/config');
@@ -312,7 +322,29 @@ app.whenReady().then(async () => {
     const tabSessionOk = firstTab && firstTab.webContents.session === defSession;
     check('adblock session matches tab session', tabSessionOk === true);
     const amProtocol = await rendererEval('window.location.href').catch(() => '');
-    // 11. Fullscreen class + bounds: entering HTML fullscreen covers the window
+    // 11. Extension Manager: verify infrastructure loads
+    const extManager = require('../src/main/extensions/manager');
+    const extRegistry = require('../src/main/extensions/registry');
+    extRegistry.load();
+    const allExts = extManager.listExtensions();
+    check('extension manager list returns array', Array.isArray(allExts));
+    // Verify IPC channels exist
+    const extListResult = await safeInvoke('extensions:list');
+    check('extensions:list IPC responds', Array.isArray(extListResult));
+    // Test install from invalid dir
+    const badInstall = await safeInvoke('extensions:install', '/nonexistent/path');
+    check('install invalid dir returns error', badInstall && badInstall.success === false && !!badInstall.error);
+    // Test installZip from invalid path
+    const badZip = await safeInvoke('extensions:installZip', '/nonexistent/file.zip');
+    check('installZip invalid path returns error', badZip && badZip.success === false && !!badZip.error);
+    // Test uninstall non-existent extension
+    const badUninstall = await safeInvoke('extensions:uninstall', 'nonexistent_id');
+    check('uninstall nonexistent returns error', badUninstall && badUninstall.success === false);
+    // Test enable non-existent extension
+    const badEnable = await safeInvoke('extensions:enable', 'nonexistent_id');
+    check('enable nonexistent returns error', badEnable && badEnable.success === false);
+
+    // 12. Fullscreen class + bounds: entering HTML fullscreen covers the window
     tabs.enterFullscreen();
     await sleep(300);
     const fsClass = await rendererEval('document.body.classList.contains("am-fullscreen")');
