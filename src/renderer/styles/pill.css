@@ -1,0 +1,47 @@
+/* Floating navigation pill overlay — a transparent WebContentsView that sits
+   on top of the page. Only the pill capsule paints; the rest of the view is
+   fully transparent so content shows through behind it. */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px; user-select: none; -webkit-user-select: none;
+}
+button { background: none; border: none; color: inherit; cursor: pointer; font: inherit; padding: 0; }
+.no-drag { -webkit-app-region: no-drag; }
+
+.pill {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 100%; height: 100%;
+  display: flex; align-items: stretch; justify-content: center; gap: 0;
+  background: transparent;
+}
+.nav-btn {
+  width: 44px; height: 42px; margin: 0 1px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; color: #9aa0a6; flex-shrink: 0;
+  transition: background var(--transition-fast, 0.15s ease), color var(--transition-fast, 0.15s ease);
+}
+.nav-btn:hover { color: #fff; background: rgba(255,255,255,0.10); }
+.nav-btn:active { background: rgba(255,255,255,0.18); }
+.nav-btn.disabled { opacity: 0.35; pointer-events: none; }
+.nav-btn svg { width: 20px; height: 20px; display: block; }
+.tab-count {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 18px; border: 1.5px solid currentColor;
+  border-radius: 5px; font-size: 9px; font-weight: 700; color: #fff;
+  padding: 0 3px; line-height: 1;
+}
+
+/* The capsule background is painted by the pill element itself (semi-
+   transparent, so the page stays visible through it — real alpha blending,
+   not a punched hole). */
+#pill {
+  background: rgba(18, 18, 18, 0.82);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 50px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.55);
+}

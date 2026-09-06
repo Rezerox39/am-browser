@@ -1,6 +1,7 @@
 'use strict';
 
 const { WebContentsView } = require('electron');
+const path = require('path');
 const crypto = require('crypto');
 const config = require('./config');
 const logger = require('./logger');
@@ -10,13 +11,22 @@ const history = require('./history');
 // The view lives BELOW all chrome so it never covers clickable UI.
 const TOOLBAR_Y = 84;   // vertical offset where the content view starts
 const PADDING = 8;      // side/bottom padding
-const BOTTOM_RESERVE = 76; // leave room for the bottom navigation pill
-
 let tabs = [];
 let activeTabId = null;
 let chromeWin = null;
 let uiMode = 'home'; // 'home' | 'content' — what the chrome UI is showing
 let rightInset = 0; // px reserved for slide-in panels (menu/settings)
+let pillView = null; // transparent floating nav pill overlay (topmost layer)
+
+// The floating pill is its own transparent WebContentsView added AFTER every
+// content view, so it always paints on top of the page (Electron composites
+// contentView children client-side). It stays put while the page scrolls
+// underneath it.
+const PILL = {
+  width: 246,
+  height: 56,
+  bottom: 20,
+};
 let lifecycle = { onCreated: () => {}, onSelected: () => {}, onDestroyed: () => {} };
 
 function setChromeWindow(win) { chromeWin = win; }
@@ -200,14 +210,16 @@ class Tab {
 
   invalidateLayout() {
     const [width, height] = this.window.getSize()
-    // View fills the area BELOW the chrome toolbar and above the bottom nav.
-    // A right-side inset keeps slide-in panels (menu/settings) clickable.
-    const w = Math.max(200, width - PADDING * 2 - rightInset)
+    // Full-bleed content: starts below the top chrome (tab strip + url bar)
+    // and runs to the very bottom edge — the floating pill overlays this area
+    // instead of reserving a black strip beneath it. A right-side inset keeps
+    // slide-in panels (menu/settings) clickable.
+    const w = Math.max(200, width - rightInset)
     this.view.setBounds({
-      x: PADDING,
+      x: 0,
       y: TOOLBAR_Y,
       width: w,
-      height: Math.max(200, height - TOOLBAR_Y - BOTTOM_RESERVE),
+      height: Math.max(200, height - TOOLBAR_Y),
     })
   }
 
@@ -265,6 +277,7 @@ function create(opts = {}) {
   }
 
   select(record.id)
+  ensurePillTop()
   broadcast()
   logger.info('tabs', 'Tab created', { id: record.id, url: record.url || '(blank)' })
   return record
@@ -324,6 +337,7 @@ function close(recordId) {
   } else {
     broadcast()
   }
+  ensurePillTop()
 }
 
 function setActive(recordId) {
@@ -382,17 +396,94 @@ function repositionActiveTab() {
 }
 function setRightInset(px) {
   rightInset = Math.max(0, Math.min(parseInt(px, 10) || 0, 600))
-  repositionActiveTab()
+  layoutChrome()
 }
 function setLifecycleCallbacks(cb) {
   if (cb && typeof cb === 'object') lifecycle = { ...lifecycle, ...cb }
 }
 
+
+/* ── Floating nav pill overlay ──────────────────────────────── */
+function createPillOverlay() {
+  if (!chromeWin || chromeWin.isDestroyed()) return
+  try {
+    pillView = new WebContentsView({
+      webPreferences: {
+        preload: path.join(__dirname, '..', 'preload', 'preload-pill.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        transparent: true,
+      },
+    })
+    pillView.setBackgroundColor('#00000000')
+    pillView.setVisible(false)
+    chromeWin.contentView.addChildView(pillView)
+    layoutPill()
+    pillView.webContents.loadFile(path.join(__dirname, '..', 'renderer', 'pill.html')).catch((err) => {
+      logger.warn('tabs', 'pill.html failed to load', { error: err.message })
+    })
+    pillView.setVisible(true)
+    logger.info('tabs', 'Floating nav pill overlay created')
+  } catch (e) {
+    logger.error('tabs', 'Failed to create pill overlay', { error: e.message })
+    pillView = null
+  }
+}
+
+function layoutPill() {
+  if (!pillView || !chromeWin || chromeWin.isDestroyed()) return
+  const [w, h] = chromeWin.getSize()
+  try {
+    pillView.setBounds({
+      x: Math.max(8, Math.round((w - PILL.width) / 2)),
+      y: Math.max(TOOLBAR_Y + 8, h - PILL.height - PILL.bottom),
+      width: PILL.width,
+      height: PILL.height,
+    })
+  } catch (e) {
+    logger.warn('tabs', 'layoutPill failed', { error: e.message })
+  }
+}
+
+// Re-adding an already-attached child moves it to the END of the view stack,
+// i.e. the TOPMOST paint/input layer. Call after every content-view change.
+function ensurePillTop() {
+  if (!pillView || !chromeWin || chromeWin.isDestroyed()) return
+  try {
+    chromeWin.contentView.addChildView(pillView)
+    pillView.setVisible(true)
+  } catch (e) {
+    logger.warn('tabs', 'ensurePillTop failed', { error: e.message })
+  }
+}
+
+// Single source of truth for chrome layout: content view + pill overlay.
+// Called on window resize/move, tab changes, and panel/menu open/close.
+function layoutChrome() {
+  repositionActiveTab()
+  layoutPill()
+  ensurePillTop()
+}
+
+function getPillView() {
+  return pillView
+}
+
 /* ── Broadcast ─────────────────────────────────────────────── */
 function broadcast() {
-  if (chromeWin && !chromeWin.webContents.isDestroyed()) {
-    const active = getActiveTab()
-    chromeWin.webContents.send('tabs:changed', getAll(), active?.id || null, active?.url || '', active?.title || '', uiMode)
+  if (!chromeWin || chromeWin.webContents.isDestroyed()) return
+  const active = getActiveTab()
+  let canBack = false
+  let canFwd = false
+  const view = active && active._tab ? active._tab : null
+  if (view && view.webContents && !view.webContents.isDestroyed()) {
+    try { canBack = view.webContents.canGoBack(); canFwd = view.webContents.canGoForward() } catch {}
+  }
+  const args = [getAll(), active?.id || null, active?.url || '', active?.title || '', uiMode, canBack, canFwd]
+  chromeWin.webContents.send('tabs:changed', ...args)
+  if (pillView && pillView.webContents && !pillView.webContents.isDestroyed()) {
+    pillView.webContents.send('tabs:changed', ...args)
   }
 }
 
@@ -407,6 +498,7 @@ function getStateForContentsId(wcId) {
 
 function init(opts = {}) {
   setChromeWindow(opts.window)
+  createPillOverlay()
   create(opts)
 }
 
@@ -414,5 +506,7 @@ module.exports = {
   init, create, close, setActive, navigate, reload, stop,
   goBack, goForward, getActiveTab, getAll, getRecord, getTabView,
   setChromeWindow, getStateForContentsId, broadcast,
-  showHome, showContent, repositionActiveTab, setRightInset, setLifecycleCallbacks,
+  showHome, showContent, repositionActiveTab, layoutChrome,
+  setRightInset, setLifecycleCallbacks, getPillView,
+  PILL,
 };

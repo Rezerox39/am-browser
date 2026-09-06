@@ -22,6 +22,7 @@ const ALLOWED_INVOKE = new Set([
 const ALLOWED_ON = new Set([
   'tabs:changed', 'tabs:focusAddressBar', 'tabs:bookmarkToggled',
   'window:maximized', 'downloads:changed',
+  'ui:showHome', 'ui:openMenu',
 ]);
 
 contextBridge.exposeInMainWorld('am', {

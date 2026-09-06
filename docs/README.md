@@ -10,7 +10,7 @@ bottom navigation pill, slim top tab strip, and right slide-in panels.
 - **Per-site settings**: JavaScript on/off, custom user agent, ad-block override, popups, permissions
 - **Tabs**: create, switch, and close from the slim top chip strip (Ctrl+T / Ctrl+W also work)
 - **Home search** is the sole search surface — fully functional, honors the configured search engine
-- **Bottom navigation pill**: back, forward, home, new tab, menu — all wired
+- **Floating navigation pill**: transparent topmost overlay (content scrolls underneath it) with back, forward, home, new tab, menu — all wired
 - **Right slide-in panels**: history, bookmarks, downloads, settings, per-site settings
 - **Chrome extensions**: load unpacked extensions from `extensions/`, install from the Chrome Web Store
 - **History, bookmarks, downloads**: full record with search and management
@@ -30,7 +30,7 @@ am-browser/
 |   +-- main/                 <- Electron main process
 |   |   +-- main.js           <- App entry, lifecycle, error dialogs
 |   |   +-- window.js         <- BrowserWindow creation (frameless, solid black)
-|   |   +-- tabs.js           <- Tab manager (WebContentsView + setVisible)
+|   |   +-- tabs.js           <- Tab manager (WebContentsView + setVisible + floating pill overlay)
 |   |   +-- extensions.js     <- Chrome extension support (MV2 + MV3 service workers)
 |   |   +-- adblock.js        <- Ad-block filter wiring (session.webRequest)
 |   |   +-- ipc.js            <- IPC registration (idempotent)

@@ -263,11 +263,10 @@
     panelBody.appendChild(row('User Agent', uaInput));
   }
 
-  $('navBack').addEventListener('click', async () => { const id = activeId || await safeInvoke('tabs:getActiveId'); if (id) safeInvoke('tabs:goBack', id); });
-  $('navForward').addEventListener('click', async () => { const id = activeId || await safeInvoke('tabs:getActiveId'); if (id) safeInvoke('tabs:goForward', id); });
-  $('navHome').addEventListener('click', () => enterHome());
-  $('navTabs').addEventListener('click', () => safeInvoke('tabs:create', {}));
-  $('navMenu').addEventListener('click', openMenu);
+  // The floating nav pill lives in its own transparent overlay view
+  // (src/renderer/pill.html). The chrome window reacts to it via IPC bridges.
+  api.on('ui:showHome', () => enterHome());
+  api.on('ui:openMenu', () => openMenu());
   $('menu-history').addEventListener('click', () => handleMenu('History'));
   $('menu-bookmarks').addEventListener('click', () => handleMenu('Bookmarks'));
   $('menu-downloads').addEventListener('click', () => handleMenu('Downloads'));

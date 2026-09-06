@@ -57,17 +57,29 @@ AM follows the architecture proven by
 1. **Attach each view exactly once** when the tab is created — never `addChildView`/`removeChildView`
    on navigation (that was the fragile approach used by AM v1.7–v1.9 and is now removed).
 2. **Toggle visibility with `view.setVisible(true/false)`** — cheap, synchronous, no re-layout.
-3. **Position the view strictly below the chrome**: `y = 84` (tab strip 52px + url bar 32px),
-   right/left padding 8px, and it ends 76px above the bottom nav pill, so the top tab strip,
-   traffic lights, url bar, and bottom nav are never covered.
-4. **Shrink the view when a right slide-in panel/menu is open** (`tabs:setInset`): the panel area
-   stays DOM-clickable instead of being swallowed by the native view.
-5. **Home mode**: when the active tab has no URL (fresh tab) or the user presses the Home button,
-   the view is hidden (`uiMode = 'home'`), so the whole home screen — including the search input —
-   is clickable. Navigation flips `uiMode` to `'content'` and shows the view.
+3. **Top chrome stays above the page**: every content view starts at `y = 84`
+   (tab strip 52px + url bar 32px) so the tab strip, traffic lights, and url bar are never covered.
+4. **Content is full-bleed below the top chrome** (`x: 0`, full width, to the bottom edge) —
+   there is no reserved strip for navigation UI, so nothing paints as a black bar.
+5. **The floating nav pill is its own transparent `WebContentsView`** (`src/renderer/pill.html`),
+   added to `contentView` *after* every content view so it is always the topmost layer. Electron
+   composites `contentView` children client-side, so the pill's semi-transparent capsule blends
+   over the page and the page scrolls underneath it. Only the capsule paints; the rest of the
+   view is `transparent: true` + `#00000000`.
+6. **`layoutChrome()` is the single source of truth** (`src/main/tabs.js`): it positions the active
+   content view and the pill, and re-asserts the pill on top. It runs on window resize/move, tab
+   create/close/select, and panel/menu open/close — so the pill can never be "destroyed" by a menu
+   cycle (regression-covered by `scripts/smoke.js`).
+7. **Shrink the content view only when a right slide-in panel/menu is open** (`tabs:setInset`):
+   the panel stays DOM-clickable; the pill is unaffected and remains on top.
+8. **Home mode**: when the active tab has no URL (fresh tab) or the user presses the pill's Home,
+   the content view is hidden (`uiMode = 'home'`), so the whole home screen — including the search
+   input — is clickable. Navigation flips `uiMode` to `'content'` and shows the view.
 
 The main process broadcasts a deterministic `uiMode` with every `tabs:changed` event, so late
-page-load events can never re-cover the home screen.
+page-load events can never re-cover the home screen. The pill overlay receives the same
+`tabs:changed` broadcast (plus back/forward state) and forwards menu/home actions to the chrome
+window over `ui:openMenu` / `ui:showHome` IPC.
 
 ## Extension Support
 

@@ -32,6 +32,7 @@ async function waitFor(fn, timeout = 20000, interval = 150) {
 }
 
 let win;
+let tabs = null;
 
 async function rendererEval(js) {
   if (!win || win.isDestroyed()) throw new Error('window destroyed');
@@ -57,12 +58,30 @@ async function clickSel(sel) {
   })()`);
 }
 
+// The floating nav pill is a separate transparent overlay view (topmost),
+// so tests drive its buttons through its own webContents.
+function pillEval(js) {
+  const pill = tabs.getPillView();
+  if (!pill || !pill.webContents || pill.webContents.isDestroyed()) {
+    return Promise.resolve(false);
+  }
+  return pill.webContents.executeJavaScript(js, true);
+}
+async function clickPill(id) {
+  return pillEval(`(() => {
+    const el = document.getElementById(${JSON.stringify(id)});
+    if (!el) return false;
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    return true;
+  })()`);
+}
+
 app.whenReady().then(async () => {
   try {
     const config = require('../src/main/config');
     const windowManager = require('../src/main/window');
     const ipcHandler = require('../src/main/ipc');
-    const tabs = require('../src/main/tabs');
+    tabs = require('../src/main/tabs');
 
     config.load();
 
@@ -74,6 +93,10 @@ app.whenReady().then(async () => {
     await waitFor(() =>
       rendererEval('!!(window.am && document.getElementById("home-input"))').catch(() => false), 30000);
     check('chrome renderer ready (preload bridge + home input)', true);
+
+    // Wait for the floating pill overlay view to load
+    await waitFor(() => pillEval('!!(window.am && document.getElementById("pillBack"))').catch(() => false), 30000);
+    check('floating pill overlay ready', true);
 
     const state = () => {
       const t = tabs.getActiveTab();
@@ -92,13 +115,35 @@ app.whenReady().then(async () => {
     check('home search set active tab url', s1.url.includes('google.com/search?q=youtube'), s1.url || '(empty)');
     check('web view visible after search', s1.visible === true);
 
-    // 2. Home button must hide the view so the home screen is clickable
-    await clickSel('#navHome');
+    // 1b. Content view must be FULL-BLEED to the bottom (no black strip
+    // reserved for the pill — the pill floats OVER the page instead).
+    const fullView = tabs.getTabView(tabs.getActiveTab().id);
+    const fullBounds = fullView ? fullView.view.getBounds() : null;
+    const winSize0 = win.getSize();
+    check('content view is full-bleed (no bottom reserve)',
+      fullBounds && fullBounds.x === 0 && fullBounds.width >= winSize0[0] - 2 &&
+      fullBounds.height >= winSize0[1] - 84 - 2,
+      JSON.stringify(fullBounds));
+
+    // 1c. Pill overlay sits centered at the bottom, floating above content
+    const pillBounds = tabs.getPillView() ? tabs.getPillView().getBounds() : null;
+    const PILL = tabs.PILL;
+    check('pill overlay floats at bottom center',
+      pillBounds && Math.abs(pillBounds.x - Math.round((winSize0[0] - PILL.width) / 2)) <= 2 &&
+      Math.abs(pillBounds.y - (winSize0[1] - PILL.height - PILL.bottom)) <= 2,
+      JSON.stringify(pillBounds));
+
+    // 1d. No navigation history yet -> pill back/forward are disabled
+    const bfDisabled = await pillEval('document.getElementById("pillBack").classList.contains("disabled") && document.getElementById("pillForward").classList.contains("disabled")');
+    check('pill back/forward disabled with no history', bfDisabled === true);
+
+    // 2. Pill Home button must hide the view so the home screen is clickable
+    await clickPill('pillHome');
     await sleep(400);
     const s2 = state();
-    check('navHome hides web view', s2.visible === false);
+    check('pill home hides web view', s2.visible === false);
     const homeShown = await rendererEval('!(document.getElementById("home").classList.contains("hidden"))');
-    check('home screen visible after navHome', homeShown === true);
+    check('home screen visible after pill home', homeShown === true);
 
     // 2b. Clicking on the home screen must refocus the search input
     await rendererEval('document.getElementById("home").dispatchEvent(new MouseEvent("click", { bubbles: true }))');
@@ -106,13 +151,16 @@ app.whenReady().then(async () => {
     const refocused = await rendererEval('document.activeElement && document.activeElement.id === "home-input"');
     check('home click refocuses search input', refocused === true);
 
-    // 3. New-tab button creates a tab (blank -> view hidden)
+    // 3. Pill new-tab button creates a tab (blank -> view hidden) and the
+    // badge updates
     const countBefore = state().count;
-    await clickSel('#navTabs');
+    await clickPill('pillTabs');
     await sleep(400);
     const s3 = state();
-    check('navTabs creates a tab', s3.count === countBefore + 1, `count=${s3.count}`);
+    check('pill tabs creates a tab', s3.count === countBefore + 1, `count=${s3.count}`);
     check('new blank tab keeps view hidden', s3.visible === false);
+    const badge = await pillEval('document.getElementById("pillTabCount").textContent');
+    check('pill tab badge updated', badge === String(s3.count), `badge=${badge}`);
 
     // 4. Clicking a tab chip switches to it and shows its view
     const chipCount = await rendererEval('document.querySelectorAll(".tab-chip").length');
@@ -128,19 +176,32 @@ app.whenReady().then(async () => {
     const s5 = state();
     check('tab chip close removes a tab', s5.count === countMid - 1, `count=${s5.count}`);
 
-    // 6. Bottom-nav menu opens; view shrinks (inset) so the panel is clickable
-    await clickSel('#navMenu');
+    // 6. Pill menu opens the chrome side menu; the content view shrinks (inset)
+    // so the panel is clickable; closing the menu restores the view AND the
+    // pill survives with the same bounds (pill-destruction regression test)
+    await clickPill('pillMenu');
     await sleep(400);
     const menuOpen = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
     const view = tabs.getTabView(tabs.getActiveTab().id);
     const bounds = view ? view.view.getBounds() : null;
     const winSize = win.getSize();
-    check('navMenu opens side menu', menuOpen === true);
-    check('menu inset shrinks view', bounds && bounds.width < winSize[0] - 40, `viewW=${bounds ? bounds.width : '?'} winW=${winSize[0]}`);
+    check('pill menu opens side menu', menuOpen === true);
+    check('menu inset shrinks view', bounds && bounds.width === winSize[0] - 340, `viewW=${bounds ? bounds.width : '?'} winW=${winSize[0]}`);
     await clickSel('#menu-close-btn');
     await sleep(400);
     const bounds2 = tabs.getTabView(tabs.getActiveTab().id).view.getBounds();
-    check('closing menu restores view width', bounds2.width >= winSize[0] - 40, `viewW=${bounds2.width}`);
+    check('closing menu restores view width', bounds2.width >= winSize[0] - 2, `viewW=${bounds2.width}`);
+    const pillBoundsAfter = tabs.getPillView() ? tabs.getPillView().getBounds() : null;
+    check('pill survives menu open/close',
+      pillBoundsAfter && pillBoundsAfter.x === pillBounds.x && pillBoundsAfter.y === pillBounds.y,
+      JSON.stringify(pillBoundsAfter));
+    // Pill still interactive after the cycle
+    await clickPill('pillMenu');
+    await sleep(400);
+    const menuOpen2 = await rendererEval('document.querySelector("#side-menu").classList.contains("open")');
+    check('pill clickable after menu cycle', menuOpen2 === true);
+    await clickSel('#menu-close-btn');
+    await sleep(300);
 
     // 7. Traffic-light IPC handlers are registered
     const maxState = await rendererEval('window.am.invoke("window:isMaximized")').catch(() => null);
