@@ -11,11 +11,17 @@
   <!-- Drag region -->
   <div class="drag-region"></div>
 
-  <!-- macOS Traffic Lights — RIGHT side -->
+  <!-- macOS Traffic Lights — LEFT side -->
   <div class="win-controls no-drag">
-    <button class="win-dot win-close" id="btnClose" title="Close"></button>
-    <button class="win-dot win-minimize" id="btnMinimize" title="Minimize"></button>
-    <button class="win-dot win-maximize" id="btnMaximize" title="Maximize"></button>
+    <button class="win-dot win-close" id="btnClose" title="Close">
+      <svg viewBox="0 0 8 8"><path d="M1.5 1.5l5 5M6.5 1.5l-5 5"/></svg>
+    </button>
+    <button class="win-dot win-minimize" id="btnMinimize" title="Minimize">
+      <svg viewBox="0 0 8 8"><path d="M1.5 4h5"/></svg>
+    </button>
+    <button class="win-dot win-maximize" id="btnMaximize" title="Maximize">
+      <svg viewBox="0 0 8 8"><path d="M1.5 1.5h5v5h-5z"/></svg>
+    </button>
   </div>
 
   <!-- Tab strip -->

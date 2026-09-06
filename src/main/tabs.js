@@ -1,6 +1,6 @@
 'use strict';
 
-const { WebContentsView } = require('electron');
+const { WebContentsView, screen } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const config = require('./config');
@@ -615,13 +615,32 @@ function createPillOverlay() {
   }
 }
 
+// Local workArea: the portion of the window that sits above the OS taskbar.
+// When maximized on Windows, the frameless window extends into the taskbar,
+// so h > workAreaHeight. This tells us the usable height from the top of the
+// content area down to the top of the taskbar.
+function localWorkAreaHeight() {
+  try {
+    const [winX, winY] = chromeWin.getPosition()
+    const [winW, winH] = chromeWin.getSize()
+    const workArea = screen.getPrimaryDisplay().workArea
+    const winBottom = winY + winH
+    const workBottom = workArea.y + workArea.height
+    const overlap = Math.max(0, winBottom - workBottom)
+    return winH - overlap
+  } catch {
+    return chromeWin.getSize()[1]
+  }
+}
+
 function layoutPill() {
   if (!pillView || !chromeWin || chromeWin.isDestroyed()) return
   const [w, h] = chromeWin.getSize()
+  const usableH = localWorkAreaHeight()
   try {
     pillView.setBounds({
       x: Math.max(8, Math.round((w - PILL.width) / 2)),
-      y: Math.max(TOOLBAR_Y + 8, h - PILL.height - PILL.bottom),
+      y: Math.max(TOOLBAR_Y + 8, usableH - PILL.height - PILL.bottom),
       width: PILL.width,
       height: PILL.height,
     })

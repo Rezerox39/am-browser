@@ -31,40 +31,58 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 /* Drag region */
 .drag-region {
   -webkit-app-region: drag;
-  position: fixed; top: 0; left: 0; right: 0; height: 52px;
+  position: fixed; top: 0; left: 84px; right: 0; height: 52px;
   z-index: 10;
 }
 
-/* ── macOS Traffic Lights — RIGHT side ──────────────────────── */
+/* ── macOS Traffic Lights — LEFT side (macOS convention) ────── */
 .win-controls {
-  position: fixed; top: 0; right: 0; height: 52px;
-  display: flex; align-items: center; gap: 8px;
-  padding-right: 14px; z-index: 500;
+  position: fixed; top: 0; left: 0; height: 52px;
+  display: flex; align-items: center; gap: 0;
+  padding-left: 14px; z-index: 500;
+  -webkit-app-region: no-drag;
 }
+/* Hit area: larger than the visible dot for easy clicking */
 .win-dot {
   width: 12px; height: 12px; border-radius: 50%;
-  position: relative; transition: opacity var(--transition-fast);
+  position: relative; flex-shrink: 0;
+  /* Larger clickable hit area — transparent padding extends the target */
+  margin: 0 4px;
+  cursor: pointer;
 }
-.win-close { background: var(--dot-red); }
-.win-minimize { background: var(--dot-yellow); }
-.win-maximize { background: var(--dot-green); }
-.win-dot::after {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700; opacity: 0; transition: opacity var(--transition-fast);
-  pointer-events: none; color: rgba(0,0,0,0.55);
+/* Visible dot is a pseudo-element so the hit area stays large */
+.win-dot::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 50%;
+  transition: background var(--transition-fast);
 }
-.win-close::after { content: '✕'; font-size: 8px; }
-.win-minimize::after { content: '−'; }
-.win-maximize::after { content: '+'; }
-.win-controls:hover .win-dot::after { opacity: 1; }
-.win-controls:not(:hover) .win-close,
-.win-controls:not(:hover) .win-minimize,
-.win-controls:not(:hover) .win-maximize { background: #555; }
-.win-dot:active { opacity: 0.7; }
+.win-close::before  { background: var(--dot-red); }
+.win-minimize::before  { background: var(--dot-yellow); }
+.win-maximize::before  { background: var(--dot-green); }
+/* When controls container is NOT hovered, all dots go grey */
+.win-controls:not(:hover) .win-dot::before { background: #555; }
+/* SVG icon inside each dot — appears on hover */
+.win-dot svg {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px; height: 8px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  pointer-events: none;
+  /* Slight stroke for the icons */
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 1.2;
+  fill: none;
+}
+.win-controls:hover .win-dot svg { opacity: 1; }
+.win-dot:active::before { filter: brightness(0.85); }
 
 /* ── Tab strip ──────────────────────────────────────────────── */
 .tab-strip {
-  position: fixed; top: 0; left: 12px; right: 120px; height: 52px;
+  position: fixed; top: 0; left: 84px; right: 120px; height: 52px;
   display: flex; align-items: center; gap: 2px; z-index: 90;
   overflow-x: auto; scrollbar-width: none;
   -webkit-app-region: drag;
