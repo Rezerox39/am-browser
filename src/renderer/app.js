@@ -167,8 +167,18 @@
       sideMenuGrid.appendChild(el);
     });
   }
+  const PANEL_TYPES = ['Bookmarks','History','Downloads','Settings','Site Settings'];
   function handleMenu(action) {
-    closeMenu();
+    if (PANEL_TYPES.includes(action)) {
+      // Close the side menu visuals WITHOUT resetting inset(0) — the panel
+      // will immediately set its own inset.  This prevents the content view
+      // from briefly expanding to full width during the transition.
+      _menuOpen = false;
+      menuBackdrop.classList.remove('open');
+      sideMenu.classList.remove('open');
+    } else {
+      closeMenu();
+    }
     if (action === 'New Tab') safeInvoke('tabs:create', {});
     else if (action === 'Bookmarks') openPanel('bookmarks', 'Bookmarks');
     else if (action === 'History') openPanel('history', 'History');
@@ -202,18 +212,19 @@
     if (type === 'history') panelSearch.classList.remove('hidden');
     panelBackdrop.classList.add('open'); panel.classList.add('open');
     currentPanel = type;
-    // close menu WITHOUT calling setInset(0) — panel replaces the inset immediately
-    _menuOpen = false;
-    menuBackdrop.classList.remove('open');
-    sideMenu.classList.remove('open');
     safeInvoke('tabs:setInset', PANEL_WIDTH);
     loadPanel();
   }
   function closePanel() {
     panelBackdrop.classList.remove('open');
     panel.classList.remove('open');
-    currentPanel = '';
     safeInvoke('tabs:setInset', 0);
+    // Reset panel content after slide-out completes so titles/items don't stick
+    const cleanup = () => { currentPanel = ''; panelTitle.textContent = ''; panelBody.innerHTML = ''; };
+    const handler = (e) => { if (e.propertyName === 'transform') { panel.removeEventListener('transitionend', handler); cleanup(); } };
+    panel.addEventListener('transitionend', handler);
+    // Fallback if transitionend doesn't fire
+    setTimeout(cleanup, 400);
   }
   async function loadPanel() {
     if (currentPanel === 'history') return renderHistory();
@@ -293,6 +304,10 @@
   api.on('ui:showHome', () => enterHome());
   api.on('ui:openMenu', () => { _menuOpen ? closeMenu() : openMenu(); });
   api.on('ui:esc', () => { closeMenu(); closePanel(); });
+  api.on('ui:fullscreen', (on) => {
+    document.body.classList.toggle('am-fullscreen', !!on);
+    if (on) { closeMenu(); closePanel(); }
+  });
   $('menu-history').addEventListener('click', () => handleMenu('History'));
   $('menu-bookmarks').addEventListener('click', () => handleMenu('Bookmarks'));
   $('menu-downloads').addEventListener('click', () => handleMenu('Downloads'));

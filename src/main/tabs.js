@@ -17,6 +17,7 @@ let chromeWin = null;
 let uiMode = 'home'; // 'home' | 'content' — what the chrome UI is showing
 let rightInset = 0; // px reserved for slide-in panels (menu/settings)
 let pillView = null; // transparent floating nav pill overlay (topmost layer)
+let _fullscreen = false;
 
 // The floating pill is its own transparent WebContentsView added AFTER every
 // content view, so it always paints on top of the page (Electron composites
@@ -218,10 +219,13 @@ class Tab {
 
   invalidateLayout() {
     const [width, height] = this.window.getSize()
-    // Full-bleed content: starts below the top chrome (tab strip + url bar)
-    // and runs to the very bottom edge — the floating pill overlays this area
-    // instead of reserving a black strip beneath it. A right-side inset keeps
-    // slide-in panels (menu/settings) clickable.
+    // In fullscreen the content view covers the entire window; chrome and pill
+    // are hidden so the video can use the full screen real estate.
+    if (_fullscreen) {
+      this.view.setBounds({ x: 0, y: 0, width, height })
+      return
+    }
+    // Normal mode: full-bleed below the top chrome (tab strip + url bar).
     const w = Math.max(200, width - rightInset)
     this.view.setBounds({
       x: 0,
@@ -529,13 +533,43 @@ function init(opts = {}) {
   setChromeWindow(opts.window)
   createPillOverlay()
   create(opts)
+  wireFullscreen()
 }
+
+/* ── HTML fullscreen support ────────────────────────────────── */
+// WebContentsView children can trigger HTML fullscreen (e.g. YouTube).
+// The BrowserWindow's webContents fires these events, and we expand
+// the active content view to fill the window while hiding chrome UI.
+function wireFullscreen() {
+  if (!chromeWin || chromeWin.isDestroyed()) return
+  chromeWin.webContents.on('enter-html-full-screen', () => enterFullscreen())
+  chromeWin.webContents.on('leave-html-full-screen', () => leaveFullscreen())
+}
+function enterFullscreen() {
+  if (_fullscreen) return
+  _fullscreen = true
+  try { if (!chromeWin.isDestroyed()) chromeWin.setFullScreen(true) } catch {}
+  try { chromeWin.webContents.send('ui:fullscreen', true) } catch {}
+  // Hide the pill overlay so it doesn't cover the fullscreen content
+  try { if (pillView && !pillView.webContents.isDestroyed()) pillView.setVisible(false) } catch {}
+  repositionActiveTab()
+}
+function leaveFullscreen() {
+  if (!_fullscreen) return
+  _fullscreen = false
+  try { if (!chromeWin.isDestroyed()) chromeWin.setFullScreen(false) } catch {}
+  try { chromeWin.webContents.send('ui:fullscreen', false) } catch {}
+  try { if (pillView && !pillView.webContents.isDestroyed()) pillView.setVisible(true) } catch {}
+  repositionActiveTab()
+}
+function isFullscreen() { return _fullscreen }
+
 
 module.exports = {
   init, create, close, setActive, navigate, reload, stop,
   goBack, goForward, getActiveTab, getAll, getRecord, getTabView,
   setChromeWindow, getStateForContentsId, broadcast,
   showHome, showContent, repositionActiveTab, layoutChrome,
-  setRightInset, setLifecycleCallbacks, getPillView,
+  setRightInset, setLifecycleCallbacks, getPillView, isFullscreen, enterFullscreen, leaveFullscreen,
   PILL,
 };

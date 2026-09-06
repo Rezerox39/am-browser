@@ -248,7 +248,44 @@ app.whenReady().then(async () => {
     const panelOpen = await rendererEval('document.querySelector("#panel").classList.contains("open")');
     check('history panel opens from menu', panelOpen === true);
     await rendererEval('document.querySelector("#panel-back").dispatchEvent(new MouseEvent("click", {bubbles:true}))');
+    await sleep(400);
+
+    // 9. Menu -> panel transition keeps inset continuous (no full-width flash) —
+    // the panel inset (420) must hold when opening from the menu, and the menu
+    // must close without resetting to 0 first.
+    await clickSel('#navMenu');
+    await sleep(400);
+    const viewDuring = tabs.getTabView(tabs.getActiveTab().id);
+    await clickSel('.sheet-item:nth-child(2)'); // Bookmarks
+    await sleep(400);
+    const panelWidthNow = tabs.getTabView(tabs.getActiveTab().id).view.getBounds().width;
+    const winWNow = win.getSize()[0];
+    check('menu->panel keeps panel inset (no full-width flash)', panelWidthNow === winWNow - 420, `viewW=${panelWidthNow} winW=${winWNow}`);
+    const panelOpen2 = await rendererEval('document.querySelector("#panel").classList.contains("open")');
+    const menuClosed2 = await rendererEval('!document.querySelector("#side-menu").classList.contains("open")');
+    check('panel open after menu->panel nav', panelOpen2 === true);
+    check('menu closed after opening panel', menuClosed2 === true);
+    await rendererEval('document.querySelector("#panel-back").dispatchEvent(new MouseEvent("click", {bubbles:true}))');
+    await sleep(400);
+
+    // 10. Fullscreen class + bounds: entering HTML fullscreen covers the window
+    tabs.enterFullscreen();
     await sleep(300);
+    const fsClass = await rendererEval('document.body.classList.contains("am-fullscreen")');
+    check('enterFullscreen toggles chrome class', fsClass === true);
+    const fsView = tabs.getTabView(tabs.getActiveTab().id);
+    const fsBounds = fsView.view.getBounds();
+    const fsWin = win.getSize();
+    check('fullscreen content view covers window',
+      fsBounds.x === 0 && fsBounds.y === 0 && fsBounds.width === fsWin[0] && fsBounds.height === fsWin[1],
+      JSON.stringify(fsBounds) + ' vs ' + JSON.stringify(fsWin));
+    tabs.leaveFullscreen();
+    await sleep(300);
+    const fsClass2 = await rendererEval('!document.body.classList.contains("am-fullscreen")');
+    const fsBounds2 = tabs.getTabView(tabs.getActiveTab().id).view.getBounds();
+    check('leaveFullscreen restores chrome class', fsClass2 === true);
+    check('leaveFullscreen restores content bounds', fsBounds2.y === 84, `y=${fsBounds2.y}`);
+    try { if (win.isFullScreen()) win.setFullScreen(false) } catch {}
 
   } catch (err) {
     console.error('SMOKE ERROR:', err);

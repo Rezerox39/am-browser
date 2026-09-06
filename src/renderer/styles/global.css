@@ -134,14 +134,16 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 /* ── Menu ───────────────────────────────────────────────────── */
 #menu-backdrop {
   position: fixed; inset: 0; z-index: 600;
-  background: rgba(0,0,0,0.5); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+  background: rgba(0,0,0,0.28); backdrop-filter: blur(12px) saturate(120%); -webkit-backdrop-filter: blur(12px) saturate(120%);
   opacity: 0; pointer-events: none; transition: opacity var(--transition);
 }
 #menu-backdrop.open { opacity: 1; pointer-events: auto; }
 #side-menu {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(340px, 85vw); z-index: 700;
-  background: rgba(12, 12, 12, 0.95); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
-  border-left: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  backdrop-filter: blur(24px) saturate(150%) brightness(1.05); -webkit-backdrop-filter: blur(24px) saturate(150%) brightness(1.05);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  box-shadow: inset 1px 0 0 rgba(255,255,255,0.04), -8px 0 32px rgba(0,0,0,0.35);
   transform: translateX(100%); transition: transform var(--transition);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -185,14 +187,16 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 /* ── Panel ──────────────────────────────────────────────────── */
 #panel-backdrop {
   position: fixed; inset: 0; z-index: 800;
-  background: rgba(0,0,0,0.6); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+  background: rgba(0,0,0,0.28); backdrop-filter: blur(12px) saturate(120%); -webkit-backdrop-filter: blur(12px) saturate(120%);
   opacity: 0; pointer-events: none; transition: opacity var(--transition);
 }
 #panel-backdrop.open { opacity: 1; pointer-events: auto; }
 #panel {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 90vw); z-index: 850;
-  background: rgba(10, 10, 10, 0.98); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
-  border-left: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  backdrop-filter: blur(24px) saturate(150%) brightness(1.05); -webkit-backdrop-filter: blur(24px) saturate(150%) brightness(1.05);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  box-shadow: inset 1px 0 0 rgba(255,255,255,0.04), -8px 0 32px rgba(0,0,0,0.35);
   transform: translateX(100%); transition: transform var(--transition);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -300,3 +304,18 @@ textarea.setting-input { min-height: 56px; resize: vertical; font-family: inheri
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .empty-state { text-align: center; padding: 48px 24px; color: var(--fg-dim); font-size: 14px; line-height: 1.6; }
 button:focus-visible, input:focus-visible { outline: 2px solid rgba(90,131,255,0.4); outline-offset: 1px; }
+
+/* ── HTML Fullscreen (YouTube etc.) ────────────────────────── */
+body.am-fullscreen .drag-region,
+body.am-fullscreen .tab-strip,
+body.am-fullscreen .url-bar,
+body.am-fullscreen .url-edit-bar,
+body.am-fullscreen .win-controls,
+body.am-fullscreen #home,
+body.am-fullscreen #side-menu,
+body.am-fullscreen #panel,
+body.am-fullscreen #menu-backdrop,
+body.am-fullscreen #panel-backdrop,
+body.am-fullscreen #toast {
+  display: none !important;
+}
