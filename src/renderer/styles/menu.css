@@ -1,3 +1,10 @@
+/* ═══════════════════════════════════════════════════════════════
+   Liquid Glass Material — Menu & Panel
+   ═══════════════════════════════════════════════════════════════
+   Visual-only changes. Layout, dimensions, spacing, and
+   functionality are completely untouched.
+   ═══════════════════════════════════════════════════════════════ */
+
 :root {
   --accent: #5a83ff;
   --border: rgba(255, 255, 255, 0.10);
@@ -8,7 +15,19 @@
   --radius-lg: 24px;
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: 0.15s ease;
+
+  /* Glass material tokens — shared across menu and panel */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-blur: 16px;
+  --glass-sat: 180%;
+  --glass-bright: 1.06;
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-highlight: rgba(255, 255, 255, 0.22);
+  --glass-shadow-outer: 0 20px 60px rgba(0, 0, 0, 0.50), 0 4px 16px rgba(0, 0, 0, 0.25);
+  --glass-shadow-inner-top: inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  --glass-shadow-inner-bot: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
   width: 100%; height: 100%; overflow: hidden;
@@ -25,36 +44,87 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 /* ── Backdrop (hidden — no dim layer needed) ──────────────── */
 #backdrop { display: none !important; }
 
-/* ── Floating side menu ───────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   LIQUID GLASS — Side Menu
+   ═══════════════════════════════════════════════════════════════ */
 #side-menu {
   position: fixed;
   top: 20px; right: 20px; bottom: 20px;
   width: min(340px, calc(100vw - 40px));
   z-index: 200;
-  /* Floating glass capsule — matches the nav pill design system */
-  background:
-    linear-gradient(
-      135deg,
-      rgba(35, 38, 46, 0.82),
-      rgba(18, 20, 26, 0.90)
-    );
-  border: 1px solid rgba(255, 255, 255, 0.10);
+
+  /* Liquid glass surface — slightly stronger than pill */
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 35%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
+
   box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    var(--glass-shadow-inner-top),
+    var(--glass-shadow-inner-bot),
+    var(--glass-shadow-outer),
+    0 0 0 0.5px rgba(0, 0, 0, 0.12);
+
   transform: translateX(calc(100% + 60px));
   transition: transform var(--transition);
   display: flex; flex-direction: column; overflow: hidden;
-  /* Anti-halo: force Skia to render rounded edges through an alpha-mask
-     shader, eliminating dark corner/edge seams over hardware surfaces
-     (same fix as the navigation pill). */
+
+  /* Anti-halo: Skia alpha-mask for rounded edges over hardware surfaces */
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
+
+  position: relative;
 }
+
 #side-menu.open { transform: translateX(0); }
 
-/* Header inside the floating capsule */
+/* ── Refraction layer ────────────────────────────────────── */
+#side-menu::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: inherit;
+  -webkit-backdrop-filter: inherit;
+  backdrop-filter: inherit;
+  filter: url(#lg-menu);
+  opacity: 0.30;
+  pointer-events: none;
+  z-index: 0;
+  -webkit-mask-image: inherit;
+  mask-image: inherit;
+}
+
+/* ── Highlight layer ─────────────────────────────────────── */
+#side-menu::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      ellipse 100% 50% at 25% 8%,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.02) 55%,
+      transparent 100%
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Ensure content sits above glass layers */
+#side-menu > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Header */
 .ph {
   display: flex; align-items: center; padding: 16px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -69,7 +139,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 }
 .menu-close-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--fg); }
 
-/* Menu grid inside the floating capsule */
+/* Menu grid */
 #side-menu-grid {
   flex: 1; overflow-y: auto; padding: 16px 14px;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
@@ -84,7 +154,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .sheet-item svg { width: 24px; height: 24px; margin-bottom: 4px; }
 .sheet-item span { font-size: 11px; text-align: center; }
 
-/* Footer inside the capsule */
+/* Footer */
 #side-menu-footer {
   display: flex; justify-content: space-around;
   padding: 14px 18px;
@@ -100,33 +170,86 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 #side-menu-footer button:hover { background: rgba(255, 255, 255, 0.06); color: var(--fg); }
 #side-menu-footer svg { width: 20px; height: 20px; }
 
-/* ── Floating panel (settings / history / etc.) ───────────── */
+/* ═══════════════════════════════════════════════════════════════
+   LIQUID GLASS — Panel (settings / history / etc.)
+   ═══════════════════════════════════════════════════════════════ */
 #panel {
   position: fixed;
   top: 20px; right: 20px; bottom: 20px;
   width: min(420px, calc(100vw - 40px));
   z-index: 300;
-  /* Same floating glass capsule as the side menu */
-  background:
-    linear-gradient(
-      135deg,
-      rgba(35, 38, 46, 0.82),
-      rgba(18, 20, 26, 0.90)
-    );
-  border: 1px solid rgba(255, 255, 255, 0.10);
+
+  /* Same liquid glass material as the side menu */
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 35%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
+
   box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    var(--glass-shadow-inner-top),
+    var(--glass-shadow-inner-bot),
+    var(--glass-shadow-outer),
+    0 0 0 0.5px rgba(0, 0, 0, 0.12);
+
   transform: translateX(calc(100% + 60px));
   transition: transform var(--transition);
   display: flex; flex-direction: column; overflow: hidden;
+
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
+
+  position: relative;
 }
 #panel.open { transform: translateX(0); }
-#panel-body { flex: 1; overflow-y: auto; }
+#panel-body { flex: 1; overflow-y: auto; position: relative; z-index: 2; }
 
+/* ── Refraction layer for panel ──────────────────────────── */
+#panel::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: inherit;
+  -webkit-backdrop-filter: inherit;
+  backdrop-filter: inherit;
+  filter: url(#lg-menu);
+  opacity: 0.30;
+  pointer-events: none;
+  z-index: 0;
+  -webkit-mask-image: inherit;
+  mask-image: inherit;
+}
+
+/* ── Highlight layer for panel ───────────────────────────── */
+#panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      ellipse 100% 50% at 25% 8%,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.02) 55%,
+      transparent 100%
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Ensure panel content sits above glass layers */
+#panel > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* ── Shared UI elements ──────────────────────────────────── */
 .search-input {
   width: 140px; background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);

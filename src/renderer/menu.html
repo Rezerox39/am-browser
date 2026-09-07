@@ -7,6 +7,19 @@
   <link rel="stylesheet" href="styles/menu.css">
 </head>
 <body>
+  <!-- SVG filter definitions for liquid-glass refraction (hidden, zero-size) -->
+  <svg width="0" height="0" style="position:absolute;pointer-events:none" aria-hidden="true">
+    <defs>
+      <filter id="lg-menu" x="-5%" y="-5%" width="110%" height="110%"
+              color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.012 0.020"
+                      numOctaves="2" seed="7" result="noise"/>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="8"
+                           xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+    </defs>
+  </svg>
+
   <!-- Full-window backdrop: clicking it closes the menu/panel -->
   <div id="backdrop"></div>
 

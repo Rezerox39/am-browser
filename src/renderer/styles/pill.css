@@ -1,4 +1,9 @@
-/* ── Floating Nav Pill — Liquid Glass ─────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   Floating Nav Pill — Liquid Glass Material
+   ═══════════════════════════════════════════════════════════════
+   Visual-only changes. Layout, dimensions, spacing, and
+   functionality are completely untouched.
+   ═══════════════════════════════════════════════════════════════ */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
   width: 100%; height: 100%; overflow: hidden;
@@ -35,7 +40,6 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
 .nav-btn.disabled { opacity: 0.28; pointer-events: none; }
 .nav-btn svg { width: 22px; height: 22px; display: block; stroke-linecap: round; stroke-linejoin: round; }
 
-/* Tab-count badge */
 .tab-count {
   display: flex; align-items: center; justify-content: center;
   min-width: 25px; height: 20px; border: 2px solid rgba(255,255,255,0.45);
@@ -45,37 +49,131 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
 }
 .nav-btn:hover .tab-count { border-color: rgba(90,131,255,0.55); }
 
-/* Extensions button — subtle accent when popup is open */
 .nav-btn.ext-active {
   color: rgba(90,131,255,0.9);
   background: rgba(90,131,255,0.12);
 }
 
-/* ── Liquid Glass capsule ─────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   LIQUID GLASS — Navigation Pill
+   ═══════════════════════════════════════════════════════════════ */
+
+/* CSS custom properties for the glass material */
 #pill {
+  /* Glass surface */
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-blur: 12px;
+  --glass-sat: 180%;
+  --glass-bright: 1.08;
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-highlight: rgba(255, 255, 255, 0.25);
+  --glass-highlight-low: rgba(255, 255, 255, 0.04);
+  --glass-shadow-deep: rgba(0, 0, 0, 0.45);
+  --glass-shadow-mid: rgba(0, 0, 0, 0.22);
+  --glass-distort: 0.04;
+
   background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.12) 0%,
-    rgba(255,255,255,0.05) 100%
+    160deg,
+    rgba(255, 255, 255, 0.10) 0%,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.07) 100%
   );
-  backdrop-filter: blur(24px) saturate(160%) brightness(1.1);
-  -webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.1);
-  border: 1px solid rgba(255,255,255,0.15);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  border: 1px solid var(--glass-border);
   border-radius: 22px;
+
+  /* Anti-halo: Skia alpha-mask for rounded edges over hardware surfaces */
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
+
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.18),
-    inset 0 -1px 0 rgba(0,0,0,0.12),
-    0 8px 32px rgba(0,0,0,0.40),
-    0 2px 8px rgba(0,0,0,0.20);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 32px var(--glass-shadow-deep),
+    0 2px 8px var(--glass-shadow-mid),
+    0 0 0 0.5px rgba(0, 0, 0, 0.15);
+
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
+
+/* ── Refraction layer: SVG feTurbulence displacement ─────── */
+/* This pseudo-element applies subtle optical distortion to the
+   blurred backdrop. It renders a transparent displacement surface
+   over the backdrop-filter result without intercepting pointer
+   events or obscuring content. */
+#pill::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: inherit;
+  -webkit-backdrop-filter: inherit;
+  backdrop-filter: inherit;
+  filter: url(#lg-pill);
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 0;
+  /* Inherit the mask so edges match */
+  -webkit-mask-image: inherit;
+  mask-image: inherit;
+}
+
+/* ── Highlight layer: directional reflection ─────────────── */
+/* A very faint radial highlight simulates a light source hitting
+   the glass surface from the upper-left. */
+#pill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      ellipse 120% 60% at 30% 10%,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.03) 50%,
+      transparent 100%
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Ensure pill content sits above the glass layers */
+#pill > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* ── Hover state ─────────────────────────────────────────── */
 #pill:hover {
-  border-color: rgba(90,131,255,0.28);
+  border-color: rgba(120, 160, 255, 0.24);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.09) 100%
+  );
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.22),
-    inset 0 -1px 0 rgba(0,0,0,0.10),
-    0 12px 40px rgba(0,0,0,0.45),
-    0 0 24px rgba(90,131,255,0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 40px var(--glass-shadow-deep),
+    0 0 24px rgba(90, 131, 255, 0.10),
+    0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Active state ────────────────────────────────────────── */
+#pill:active {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 40%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 2px 4px rgba(0, 0, 0, 0.15),
+    0 4px 16px var(--glass-shadow-deep),
+    0 0 0 0.5px rgba(0, 0, 0, 0.20);
 }
