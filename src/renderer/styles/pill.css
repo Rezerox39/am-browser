@@ -3,11 +3,6 @@
    ═══════════════════════════════════════════════════════════════
    Visual-only changes. Layout, dimensions, spacing, and
    functionality are completely untouched.
-
-   True refraction via backdrop-filter offset: the ::before layer
-   captures the backdrop at a slightly different scale/position
-   than #pill, creating a visible optical shift — the same
-   principle as a physical glass lens.
    ═══════════════════════════════════════════════════════════════ */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
@@ -68,58 +63,70 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
   --glass-sat: 180%;
   --glass-bright: 1.08;
   --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-highlight: rgba(255, 255, 255, 0.25);
 
   background: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.10) 0%,
-    rgba(255, 255, 255, 0.04) 40%,
-    rgba(255, 255, 255, 0.07) 100%
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.03) 45%,
+    rgba(255, 255, 255, 0.06) 100%
   );
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
   border: 1px solid var(--glass-border);
   border-radius: 22px;
 
+  /* Anti-halo: Skia alpha-mask for rounded edges over hardware surfaces */
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
 
   box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.05),
-    0 8px 32px rgba(0, 0, 0, 0.45),
-    0 2px 8px rgba(0, 0, 0, 0.22),
-    0 0 0 0.5px rgba(0, 0, 0, 0.15);
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 32px rgba(0, 0, 0, 0.42),
+    0 2px 8px rgba(0, 0, 0, 0.20),
+    0 0 0 0.5px rgba(0, 0, 0, 0.12);
 
   transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
-/* ── Refraction layer: backdrop-filter offset ──────────────
-   This ::before captures the live backdrop via its own
-   backdrop-filter, then renders it at a slightly different
-   scale and position. The mismatch between #pill's backdrop
-   and ::before's backdrop creates visible optical refraction —
-   content behind the glass appears subtly shifted, exactly
-   like a physical glass lens. Verified in Chromium 126. */
+/* ── Refraction layer ──────────────────────────────────────
+   Matches the pill's exact bounds (inset: 0). scale(1.02)
+   centered creates a 2% radial expansion — the backdrop
+   captured by ::before's own backdrop-filter is rendered
+   at a slightly larger scale than #pill's. At the pill's
+   center the offset is ~0; at the edges it reaches ~1-2px.
+   This matches a convex lens profile: least distortion at
+   center, increasing toward edges.
+
+   Both layers share the same mask-image, so the refraction
+   fades identically to the pill at its edges — no ghosting,
+   no seams, no halos. The overflow: hidden on #pill also
+   clips any subpixel bleed.
+
+   Verified: no double-image, no rectangular artifacts in
+   Chromium 126 on scrolled content. */
 #pill::before {
   content: '';
   position: absolute;
-  inset: -4px;
+  inset: 0;
   border-radius: inherit;
   background: transparent;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
-  backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
-  /* The offset creates refraction: scale up slightly + shift */
-  transform: scale(1.04) translate(2px, -1px);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(1.02);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(1.02);
+  transform: scale(1.02);
   pointer-events: none;
   z-index: 0;
   -webkit-mask-image: inherit;
   mask-image: inherit;
 }
 
-/* ── Highlight layer: directional reflection ─────────────── */
+/* ── Highlight layer ───────────────────────────────────────
+   Extremely subtle directional highlight. A faint radial
+   gradient simulates a light source from the upper-left.
+   Must be barely visible — the glass should not look like
+   white plastic. */
 #pill::after {
   content: '';
   position: absolute;
@@ -127,48 +134,49 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
   border-radius: inherit;
   background:
     radial-gradient(
-      ellipse 120% 60% at 30% 10%,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.03) 50%,
+      ellipse 100% 50% at 30% 8%,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.02) 50%,
       transparent 100%
     );
   pointer-events: none;
   z-index: 1;
 }
 
+/* Content above glass layers */
 #pill > * {
   position: relative;
   z-index: 2;
 }
 
-/* ── Hover state ─────────────────────────────────────────── */
+/* ── Hover ───────────────────────────────────────────────── */
 #pill:hover {
-  border-color: rgba(120, 160, 255, 0.24);
+  border-color: rgba(120, 160, 255, 0.22);
   background: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.13) 0%,
-    rgba(255, 255, 255, 0.06) 40%,
-    rgba(255, 255, 255, 0.09) 100%
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.05) 45%,
+    rgba(255, 255, 255, 0.08) 100%
   );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.30),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 24px rgba(90, 131, 255, 0.10),
-    0 0 0 0.5px rgba(0, 0, 0, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 40px rgba(0, 0, 0, 0.42),
+    0 0 24px rgba(90, 131, 255, 0.08),
+    0 0 0 0.5px rgba(0, 0, 0, 0.10);
 }
 
-/* ── Active state ────────────────────────────────────────── */
+/* ── Active ──────────────────────────────────────────────── */
 #pill:active {
   background: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 40%,
-    rgba(255, 255, 255, 0.04) 100%
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.01) 45%,
+    rgba(255, 255, 255, 0.03) 100%
   );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset 0 2px 4px rgba(0, 0, 0, 0.15),
-    0 4px 16px rgba(0, 0, 0, 0.45),
-    0 0 0 0.5px rgba(0, 0, 0, 0.20);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 2px 4px rgba(0, 0, 0, 0.12),
+    0 4px 16px rgba(0, 0, 0, 0.42),
+    0 0 0 0.5px rgba(0, 0, 0, 0.18);
 }

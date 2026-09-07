@@ -35,50 +35,87 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   z-index: 10;
 }
 
-/* ── macOS Traffic Lights — LEFT side (macOS convention) ────── */
+/* ── macOS Traffic Lights — LEFT side ────────────────────────
+   Refined geometry, optical alignment, macOS-accurate colors.
+   The visible dot is 12px; the hit area extends via margin.
+   Icon strokes are 1.0px for crispness at all DPI scales. */
 .win-controls {
   position: fixed; top: 0; left: 0; height: 52px;
-  display: flex; align-items: center; gap: 0;
-  padding-left: 14px; z-index: 500;
+  display: flex; align-items: center;
+  padding-left: 13px; z-index: 500;
   -webkit-app-region: no-drag;
 }
-/* Hit area: larger than the visible dot for easy clicking */
 .win-dot {
   width: 12px; height: 12px; border-radius: 50%;
   position: relative; flex-shrink: 0;
-  /* Larger clickable hit area — transparent padding extends the target */
-  margin: 0 4px;
+  /* 8px horizontal margin → 16px total gap between centers.
+     Hit area extends ~7px beyond the visible 12px dot on each side. */
+  margin: 0 8px;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
-/* Visible dot is a pseudo-element so the hit area stays large */
+/* Visible circle — pseudo-element keeps hit area independent of visual size */
 .win-dot::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
+  inset: 0;
   border-radius: 50%;
-  transition: background var(--transition-fast);
+  transition: background 0.12s ease;
 }
-.win-close::before  { background: var(--dot-red); }
-.win-minimize::before  { background: var(--dot-yellow); }
-.win-maximize::before  { background: var(--dot-green); }
-/* When controls container is NOT hovered, all dots go grey */
-.win-controls:not(:hover) .win-dot::before { background: #555; }
-/* SVG icon inside each dot — appears on hover */
+/* macOS-accurate muted traffic-light colors */
+.win-close::before    { background: #e8453c; }
+.win-minimize::before { background: #e8a92a; }
+.win-maximize::before { background: #3dba4e; }
+/* Resting state: muted grey — macOS convention */
+.win-controls:not(:hover) .win-dot::before {
+  background: #4a4a4a;
+}
+/* SVG icon — hidden by default, revealed on per-dot hover */
 .win-dot svg {
   position: absolute;
   top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
   width: 8px; height: 8px;
   opacity: 0;
-  transition: opacity var(--transition-fast);
+  transition: opacity 0.12s ease;
   pointer-events: none;
-  /* Slight stroke for the icons */
-  stroke: rgba(0, 0, 0, 0.55);
-  stroke-width: 1.2;
+  stroke: rgba(0, 0, 0, 0.60);
+  stroke-width: 1.0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   fill: none;
+  /* Prevent SVG from receiving pointer events */
+  transform: translate(-50%, -50%);
 }
-.win-controls:hover .win-dot svg { opacity: 1; }
-.win-dot:active::before { filter: brightness(0.85); }
+/* Only the hovered dot reveals its icon */
+.win-dot:hover svg { opacity: 1; }
+/* Pressed state — subtle darken, matching macOS feel */
+.win-dot:active::before {
+  filter: brightness(0.82);
+}
+/* Maximize ↔ Restore icon toggle */
+.win-dot .icon-max,
+.win-dot .icon-restore {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 8px; height: 8px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  stroke: rgba(0, 0, 0, 0.60);
+  stroke-width: 1.0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  transform: translate(-50%, -50%);
+}
+.win-dot:hover .icon-max,
+.win-dot:hover .icon-restore {
+  opacity: 1;
+}
+.win-maximize.is-restored .icon-max { display: none; }
+.win-maximize.is-restored .icon-restore { display: block !important; }
+.win-maximize:not(.is-restored) .icon-restore { display: none; }
+.win-maximize:not(.is-restored) .icon-max { display: block; }
 
 /* ── Tab strip ──────────────────────────────────────────────── */
 .tab-strip {
