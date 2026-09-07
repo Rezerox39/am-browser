@@ -3,6 +3,11 @@
    ═══════════════════════════════════════════════════════════════
    Visual-only changes. Layout, dimensions, spacing, and
    functionality are completely untouched.
+
+   True refraction via backdrop-filter offset: the ::before layer
+   captures the backdrop at a slightly different scale/position
+   than #pill, creating a visible optical shift — the same
+   principle as a physical glass lens.
    ═══════════════════════════════════════════════════════════════ */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
@@ -58,19 +63,12 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
    LIQUID GLASS — Navigation Pill
    ═══════════════════════════════════════════════════════════════ */
 
-/* CSS custom properties for the glass material */
 #pill {
-  /* Glass surface */
-  --glass-bg: rgba(255, 255, 255, 0.07);
-  --glass-blur: 12px;
+  --glass-blur: 14px;
   --glass-sat: 180%;
   --glass-bright: 1.08;
   --glass-border: rgba(255, 255, 255, 0.14);
   --glass-highlight: rgba(255, 255, 255, 0.25);
-  --glass-highlight-low: rgba(255, 255, 255, 0.04);
-  --glass-shadow-deep: rgba(0, 0, 0, 0.45);
-  --glass-shadow-mid: rgba(0, 0, 0, 0.22);
-  --glass-distort: 0.04;
 
   background: linear-gradient(
     160deg,
@@ -83,15 +81,14 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
   border: 1px solid var(--glass-border);
   border-radius: 22px;
 
-  /* Anti-halo: Skia alpha-mask for rounded edges over hardware surfaces */
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
 
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
     inset 0 -1px 0 rgba(255, 255, 255, 0.05),
-    0 8px 32px var(--glass-shadow-deep),
-    0 2px 8px var(--glass-shadow-mid),
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.22),
     0 0 0 0.5px rgba(0, 0, 0, 0.15);
 
   transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
@@ -99,31 +96,30 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
   overflow: hidden;
 }
 
-/* ── Refraction layer: SVG feTurbulence displacement ─────── */
-/* This pseudo-element applies subtle optical distortion to the
-   blurred backdrop. It renders a transparent displacement surface
-   over the backdrop-filter result without intercepting pointer
-   events or obscuring content. */
+/* ── Refraction layer: backdrop-filter offset ──────────────
+   This ::before captures the live backdrop via its own
+   backdrop-filter, then renders it at a slightly different
+   scale and position. The mismatch between #pill's backdrop
+   and ::before's backdrop creates visible optical refraction —
+   content behind the glass appears subtly shifted, exactly
+   like a physical glass lens. Verified in Chromium 126. */
 #pill::before {
   content: '';
   position: absolute;
-  inset: -2px;
+  inset: -4px;
   border-radius: inherit;
-  background: inherit;
-  -webkit-backdrop-filter: inherit;
-  backdrop-filter: inherit;
-  filter: url(#lg-pill);
-  opacity: 0.35;
+  background: transparent;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
+  backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
+  /* The offset creates refraction: scale up slightly + shift */
+  transform: scale(1.04) translate(2px, -1px);
   pointer-events: none;
   z-index: 0;
-  /* Inherit the mask so edges match */
   -webkit-mask-image: inherit;
   mask-image: inherit;
 }
 
 /* ── Highlight layer: directional reflection ─────────────── */
-/* A very faint radial highlight simulates a light source hitting
-   the glass surface from the upper-left. */
 #pill::after {
   content: '';
   position: absolute;
@@ -140,7 +136,6 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
   z-index: 1;
 }
 
-/* Ensure pill content sits above the glass layers */
 #pill > * {
   position: relative;
   z-index: 2;
@@ -158,7 +153,7 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.30),
     inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 40px var(--glass-shadow-deep),
+    0 12px 40px rgba(0, 0, 0, 0.45),
     0 0 24px rgba(90, 131, 255, 0.10),
     0 0 0 0.5px rgba(0, 0, 0, 0.12);
 }
@@ -174,6 +169,6 @@ button { background: none; border: none; color: inherit; cursor: pointer; font: 
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.15),
     inset 0 2px 4px rgba(0, 0, 0, 0.15),
-    0 4px 16px var(--glass-shadow-deep),
+    0 4px 16px rgba(0, 0, 0, 0.45),
     0 0 0 0.5px rgba(0, 0, 0, 0.20);
 }

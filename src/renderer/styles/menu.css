@@ -3,6 +3,8 @@
    ═══════════════════════════════════════════════════════════════
    Visual-only changes. Layout, dimensions, spacing, and
    functionality are completely untouched.
+
+   True refraction via backdrop-filter offset on ::before.
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
@@ -16,16 +18,12 @@
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: 0.15s ease;
 
-  /* Glass material tokens — shared across menu and panel */
-  --glass-bg: rgba(255, 255, 255, 0.06);
+  /* Glass material tokens */
   --glass-blur: 16px;
   --glass-sat: 180%;
   --glass-bright: 1.06;
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-highlight: rgba(255, 255, 255, 0.22);
-  --glass-shadow-outer: 0 20px 60px rgba(0, 0, 0, 0.50), 0 4px 16px rgba(0, 0, 0, 0.25);
-  --glass-shadow-inner-top: inset 0 1px 0 rgba(255, 255, 255, 0.20);
-  --glass-shadow-inner-bot: inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -53,7 +51,6 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   width: min(340px, calc(100vw - 40px));
   z-index: 200;
 
-  /* Liquid glass surface — slightly stronger than pill */
   background: linear-gradient(
     155deg,
     rgba(255, 255, 255, 0.08) 0%,
@@ -66,16 +63,16 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   border-radius: var(--radius-lg);
 
   box-shadow:
-    var(--glass-shadow-inner-top),
-    var(--glass-shadow-inner-bot),
-    var(--glass-shadow-outer),
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 20px 60px rgba(0, 0, 0, 0.50),
+    0 4px 16px rgba(0, 0, 0, 0.25),
     0 0 0 0.5px rgba(0, 0, 0, 0.12);
 
   transform: translateX(calc(100% + 60px));
   transition: transform var(--transition);
   display: flex; flex-direction: column; overflow: hidden;
 
-  /* Anti-halo: Skia alpha-mask for rounded edges over hardware surfaces */
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
 
@@ -88,13 +85,12 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 #side-menu::before {
   content: '';
   position: absolute;
-  inset: -2px;
+  inset: -4px;
   border-radius: inherit;
-  background: inherit;
-  -webkit-backdrop-filter: inherit;
-  backdrop-filter: inherit;
-  filter: url(#lg-menu);
-  opacity: 0.30;
+  background: transparent;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
+  backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
+  transform: scale(1.02) translate(3px, -1px);
   pointer-events: none;
   z-index: 0;
   -webkit-mask-image: inherit;
@@ -118,7 +114,6 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   z-index: 1;
 }
 
-/* Ensure content sits above glass layers */
 #side-menu > * {
   position: relative;
   z-index: 2;
@@ -179,7 +174,6 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   width: min(420px, calc(100vw - 40px));
   z-index: 300;
 
-  /* Same liquid glass material as the side menu */
   background: linear-gradient(
     155deg,
     rgba(255, 255, 255, 0.08) 0%,
@@ -192,9 +186,10 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   border-radius: var(--radius-lg);
 
   box-shadow:
-    var(--glass-shadow-inner-top),
-    var(--glass-shadow-inner-bot),
-    var(--glass-shadow-outer),
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 20px 60px rgba(0, 0, 0, 0.50),
+    0 4px 16px rgba(0, 0, 0, 0.25),
     0 0 0 0.5px rgba(0, 0, 0, 0.12);
 
   transform: translateX(calc(100% + 60px));
@@ -213,13 +208,12 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 #panel::before {
   content: '';
   position: absolute;
-  inset: -2px;
+  inset: -4px;
   border-radius: inherit;
-  background: inherit;
-  -webkit-backdrop-filter: inherit;
-  backdrop-filter: inherit;
-  filter: url(#lg-menu);
-  opacity: 0.30;
+  background: transparent;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
+  backdrop-filter: blur(var(--glass-blur)) saturate(calc(var(--glass-sat) + 10%)) brightness(1.02);
+  transform: scale(1.02) translate(3px, -1px);
   pointer-events: none;
   z-index: 0;
   -webkit-mask-image: inherit;
@@ -243,7 +237,6 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   z-index: 1;
 }
 
-/* Ensure panel content sits above glass layers */
 #panel > * {
   position: relative;
   z-index: 2;
