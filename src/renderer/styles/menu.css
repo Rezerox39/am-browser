@@ -31,14 +31,16 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   top: 20px; right: 20px; bottom: 20px;
   width: min(340px, calc(100vw - 40px));
   z-index: 200;
-  /* Floating glass capsule — matches the nav pill design system */
-  background:
-    linear-gradient(
-      135deg,
-      rgba(35, 38, 46, 0.82),
-      rgba(18, 20, 26, 0.90)
-    );
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  /* Same liquid glass material as the navigation pill */
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.03) 45%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(180%) brightness(1.08);
+  backdrop-filter: blur(14px) saturate(180%) brightness(1.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-lg);
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.35),
@@ -106,14 +108,16 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
   top: 20px; right: 20px; bottom: 20px;
   width: min(420px, calc(100vw - 40px));
   z-index: 300;
-  /* Same floating glass capsule as the side menu */
-  background:
-    linear-gradient(
-      135deg,
-      rgba(35, 38, 46, 0.82),
-      rgba(18, 20, 26, 0.90)
-    );
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  /* Glass — slightly more opaque so side-menu doesn't show through */
+  background: linear-gradient(
+    160deg,
+    rgba(30, 32, 40, 0.94) 0%,
+    rgba(18, 20, 26, 0.97) 45%,
+    rgba(22, 24, 30, 0.96) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(180%) brightness(1.08);
+  backdrop-filter: blur(14px) saturate(180%) brightness(1.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-lg);
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.35),

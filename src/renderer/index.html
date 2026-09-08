@@ -13,14 +13,15 @@
 
   <!-- macOS Traffic Lights — LEFT side -->
   <div class="win-controls no-drag">
-    <button class="win-dot win-close" id="btnClose" title="Close">
-      <svg viewBox="0 0 8 8"><path d="M1.5 1.5l5 5M6.5 1.5l-5 5"/></svg>
+    <button class="win-dot win-close" id="btnClose" title="Close" aria-label="Close">
+      <svg viewBox="0 0 8 8"><path d="M1.4 1.4l5.2 5.2M6.6 1.4L1.4 6.6"/></svg>
     </button>
-    <button class="win-dot win-minimize" id="btnMinimize" title="Minimize">
+    <button class="win-dot win-minimize" id="btnMinimize" title="Minimize" aria-label="Minimize">
       <svg viewBox="0 0 8 8"><path d="M1.5 4h5"/></svg>
     </button>
-    <button class="win-dot win-maximize" id="btnMaximize" title="Maximize">
-      <svg viewBox="0 0 8 8"><path d="M1.5 1.5h5v5h-5z"/></svg>
+    <button class="win-dot win-maximize" id="btnMaximize" title="Maximize" aria-label="Maximize">
+      <svg class="icon-max" viewBox="0 0 8 8"><path d="M1.5 2.5h4v4h-4z"/></svg>
+      <svg class="icon-restore" viewBox="0 0 8 8" style="display:none"><path d="M2.5 1.5h3.5v3.5h-3.5zM1.5 2.5v3.5h-0"/></svg>
     </button>
   </div>
 

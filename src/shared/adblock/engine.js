@@ -59,10 +59,12 @@ class AdBlockEngine {
       // Handle ^ as separator (end of host or start of path)
       const caretIdx = body.indexOf('^');
       let effective = caretIdx === -1 ? body : body.slice(0, caretIdx);
-      const pathIdx = effective.search(/[/:*]/);
+      const pathIdx = effective.search(/[/:]/);
       const host = pathIdx === -1 ? effective : effective.slice(0, pathIdx);
       if (!host || !host.includes('.')) return null;
       let suffix = pathIdx === -1 ? '' : effective.slice(pathIdx);
+      // Strip * and ^ wildcards from suffix — use only the meaningful prefix
+      suffix = suffix.replace(/[\^*]/g, '');
       const fullMatch = !suffix;
       return { type: 'domainPrefix', host: host.toLowerCase(), suffix: suffix.toLowerCase(), exception, fullMatch };
     }

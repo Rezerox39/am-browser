@@ -184,7 +184,10 @@
   api.on('tabs:focusAddressBar', () => openUrlEdit());
   api.on('window:maximized', isMax => {
     const dot = $('btnMaximize');
-    if (dot) dot.title = isMax ? 'Restore' : 'Maximize';
+    if (dot) {
+      dot.title = isMax ? 'Restore' : 'Maximize';
+      dot.classList.toggle('is-restored', !!isMax);
+    }
   });
 
   (async () => {
