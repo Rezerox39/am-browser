@@ -300,7 +300,6 @@
 ||maxads.ascendmedia.com^
 ||aswpsdkus.com^
 ||fundingchoicesmessages.google.com^
-||manifest.googlevideo.com^
 
 ! === ADDITIONAL TRACKERS & AD DOMAINS ===
 ||amplitude.com^

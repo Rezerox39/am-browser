@@ -63,11 +63,17 @@ class AdBlockEngine {
       const host = pathIdx === -1 ? effective : effective.slice(0, pathIdx);
       if (!host || !host.includes('.')) return null;
       let suffix = pathIdx === -1 ? '' : effective.slice(pathIdx);
-      // Strip * and ^ wildcards — use only the path prefix before first wildcard
+      // For ||domain/path*foo*bar patterns:
+      // suffix = path prefix (before first *)
+      // suffixParts = remaining fragments that must appear in order
+      let suffixParts = [];
       const starIdx = suffix.search(/[\^*]/);
-      if (starIdx !== -1) suffix = suffix.slice(0, starIdx);
-      const fullMatch = !suffix;
-      return { type: 'domainPrefix', host: host.toLowerCase(), suffix: suffix.toLowerCase(), exception, fullMatch };
+      if (starIdx !== -1) {
+        suffixParts = suffix.slice(starIdx + 1).split(/[\^*]+/).filter(p => p.length > 0);
+        suffix = suffix.slice(0, starIdx);
+      }
+      const fullMatch = !suffix && suffixParts.length === 0;
+      return { type: 'domainPrefix', host: host.toLowerCase(), suffix: suffix.toLowerCase(), suffixParts, exception, fullMatch };
     }
 
     if (rule.startsWith('|')) {
@@ -138,7 +144,20 @@ class AdBlockEngine {
     const hostMatch = host === rule.host || host.endsWith(dot + rule.host);
     if (!hostMatch) return false;
     if (rule.fullMatch) return true;
-    return path.startsWith(rule.suffix) || ('' + rule.suffix === '' && true) || (!!rule.suffix && path.startsWith(rule.suffix));
+    // No suffix and no parts → just host match (||domain.com^)
+    if (!rule.suffix && (!rule.suffixParts || rule.suffixParts.length === 0)) return true;
+    // Check suffix (path prefix)
+    if (rule.suffix && !path.startsWith(rule.suffix)) return false;
+    // Check wildcard parts must appear in sequence in the remainder
+    if (rule.suffixParts && rule.suffixParts.length > 0) {
+      let pos = rule.suffix ? rule.suffix.length : 0;
+      for (let i = 0; i < rule.suffixParts.length; i++) {
+        const idx = path.indexOf(rule.suffixParts[i], pos);
+        if (idx === -1) return false;
+        pos = idx + rule.suffixParts[i].length;
+      }
+    }
+    return true;
   }
 
   _matchWildcard(parts, lower) {
