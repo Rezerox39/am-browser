@@ -31,7 +31,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 /* Drag region */
 .drag-region {
   -webkit-app-region: drag;
-  position: fixed; top: 0; left: 84px; right: 84px; height: 52px;
+  position: fixed; top: 0; left: 8px; right: 84px; height: 52px;
   z-index: 10;
 }
 
@@ -112,7 +112,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 
 /* ── Tab strip ──────────────────────────────────────────────── */
 .tab-strip {
-  position: fixed; top: 0; left: 84px; right: 84px; height: 52px;
+  position: fixed; top: 0; left: 8px; right: 84px; height: 52px;
   display: flex; align-items: center; gap: 2px; z-index: 90;
   overflow-x: auto; scrollbar-width: none;
   -webkit-app-region: drag;
@@ -152,7 +152,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 .url-bar {
   position: fixed; top: 52px; left: 0; right: 0; height: 32px;
   display: flex; align-items: center; justify-content: center;
-  z-index: 89; padding: 0 120px; cursor: text;
+  z-index: 89; padding: 0 90px; cursor: text;
 }
 .url-bar-text {
   font-size: 12px; color: var(--fg-dim);
@@ -196,8 +196,13 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 #home-search:hover { border-color: #555; }
 #home-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(90,131,255,0.15); }
 #home-search svg { width: 18px; height: 18px; flex-shrink: 0; }
-#home-search input { flex: 1; height: 32px; font-size: 15px; color: var(--fg); }
+#home-search input {
+  flex: 1; height: 32px; font-size: 15px; color: var(--fg);
+}
 #home-search input::placeholder { color: var(--fg-muted); }
+/* Focus: no inner square box, keep rounded capsule outline on the container only */
+#home-search input:focus { outline: none; box-shadow: none; border: none; }
+#home-search input:focus-visible { outline: none; box-shadow: none; }
 
 /* Toast */
 #toast {
@@ -211,6 +216,13 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .empty-state { text-align: center; padding: 48px 24px; color: var(--fg-dim); font-size: 14px; line-height: 1.6; }
 button:focus-visible, input:focus-visible { outline: 2px solid rgba(90,131,255,0.4); outline-offset: 1px; }
+#home-search input:focus, #home-search input:focus-visible,
+#urlInput:focus, #urlInput:focus-visible,
+#panel-search:focus, #panel-search:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
 
 /* ── HTML Fullscreen (YouTube etc.) ────────────────────────── */
 body.am-fullscreen .drag-region,

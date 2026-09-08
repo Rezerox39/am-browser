@@ -35,6 +35,7 @@
   /* ── Side menu ───────────────────────────────────────────── */
   const MENU_ITEMS = [
     { label: 'New Tab', action: 'createTab' },
+    { label: 'Extensions', action: 'panel', panel: 'extensions', title: 'Extensions' },
     { label: 'Bookmarks', action: 'panel', panel: 'bookmarks', title: 'Bookmarks' },
     { label: 'History', action: 'panel', panel: 'history', title: 'History' },
     { label: 'Downloads', action: 'panel', panel: 'downloads', title: 'Downloads' },
@@ -45,6 +46,7 @@
 
   const ICONS = {
     'New Tab': '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    'Extensions': '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     'Bookmarks': '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
     'History': '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     'Downloads': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
@@ -101,12 +103,53 @@
   }
 
   async function loadPanel() {
+    if (currentPanel === 'extensions') return renderExtensions();
     if (currentPanel === 'history') return renderHistory();
     if (currentPanel === 'bookmarks') return renderBookmarks();
     if (currentPanel === 'downloads') return renderDownloads();
     if (currentPanel === 'settings') return renderSettings();
     if (currentPanel === 'siteSettings') return renderSiteSettings();
   }
+  async function renderExtensions() {
+    let exts = [];
+    try { exts = await safeInvoke('extensions:getAll') || []; } catch {}
+    panelBody.innerHTML = '';
+    if (!Array.isArray(exts) || exts.length === 0) {
+      panelBody.innerHTML = '<div class="empty-state">No extensions installed yet.<br><small style="color:var(--fg-dim)">Visit the Chrome Web Store to install extensions.</small></div>';
+      const storeBtn = document.createElement('button');
+      storeBtn.className = 'btn';
+      storeBtn.textContent = 'Open Chrome Web Store';
+      storeBtn.addEventListener('click', () => {
+        safeInvoke('tabs:create', { url: 'https://chromewebstore.google.com/' });
+        closeOverlay();
+      });
+      panelBody.appendChild(storeBtn);
+      return;
+    }
+    const header = document.createElement('div');
+    header.className = 'mg-item';
+    header.innerHTML = '<label style="font-weight:600;font-size:14px">' + exts.length + ' extension' + (exts.length !== 1 ? 's' : '') + ' installed</label>';
+    panelBody.appendChild(header);
+    exts.forEach(ext => {
+      const el = document.createElement('div');
+      el.className = 'mg-item';
+      el.style.flexDirection = 'column';
+      el.style.alignItems = 'flex-start';
+      el.innerHTML = '<div style="display:flex;justify-content:space-between;width:100%;align-items:center"><label style="font-weight:600;font-size:14px">' + ext.name + '</label><span style="font-size:11px;color:var(--fg-dim)">' + ext.version + '</span></div>' +
+        '<span style="font-size:11px;color:var(--fg-dim);margin-top:4px;font-family:monospace">' + ext.id + '</span>';
+      panelBody.appendChild(el);
+    });
+    const storeBtn = document.createElement('button');
+    storeBtn.className = 'btn';
+    storeBtn.textContent = 'Open Chrome Web Store';
+    storeBtn.style.marginTop = '12px';
+    storeBtn.addEventListener('click', () => {
+      safeInvoke('tabs:create', { url: 'https://chromewebstore.google.com/' });
+      closeOverlay();
+    });
+    panelBody.appendChild(storeBtn);
+  }
+
 
   function empty(msg) { panelBody.innerHTML = '<div class="empty-state">' + msg + '</div>'; }
 
