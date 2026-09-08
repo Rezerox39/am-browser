@@ -169,6 +169,15 @@ function register(win) {
   registerChannel('extensions:getAll', () => {
     return require('./extensions').getExtensionList();
   });
+  registerChannel('extensions:enable', (e, id) => {
+    return require('./extensions').enableExtension(id);
+  });
+  registerChannel('extensions:disable', (e, id) => {
+    return require('./extensions').disableExtension(id);
+  });
+  registerChannel('extensions:remove', (e, id) => {
+    return require('./extensions').removeExtension(id);
+  });
 }
 
 module.exports = { register };

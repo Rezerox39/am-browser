@@ -17,6 +17,7 @@ const ALLOWED_INVOKE = new Set([
   'i18n:getAvailable', 'i18n:setLocale', 'i18n:getStrings',
   'adblock:getStats', 'adblock:isEnabled',
   'extensions:getAll',
+  'extensions:enable', 'extensions:disable', 'extensions:remove',
 ]);
 
 const ALLOWED_ON = new Set([

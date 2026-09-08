@@ -131,13 +131,56 @@
     header.innerHTML = '<label style="font-weight:600;font-size:14px">' + exts.length + ' extension' + (exts.length !== 1 ? 's' : '') + ' installed</label>';
     panelBody.appendChild(header);
     exts.forEach(ext => {
-      const el = document.createElement('div');
-      el.className = 'mg-item';
-      el.style.flexDirection = 'column';
-      el.style.alignItems = 'flex-start';
-      el.innerHTML = '<div style="display:flex;justify-content:space-between;width:100%;align-items:center"><label style="font-weight:600;font-size:14px">' + ext.name + '</label><span style="font-size:11px;color:var(--fg-dim)">' + ext.version + '</span></div>' +
-        '<span style="font-size:11px;color:var(--fg-dim);margin-top:4px;font-family:monospace">' + ext.id + '</span>';
-      panelBody.appendChild(el);
+      const row = document.createElement('div');
+      row.className = 'mg-item';
+      row.style.flexDirection = 'column';
+      row.style.alignItems = 'flex-start';
+      row.style.gap = '6px';
+
+      const top = document.createElement('div');
+      top.style.cssText = 'display:flex;justify-content:space-between;width:100%;align-items:center';
+      top.innerHTML = '<label style="font-weight:600;font-size:14px">' + ext.name + '</label><span style="font-size:11px;color:var(--fg-dim)">' + ext.version + '</span>';
+      row.appendChild(top);
+
+      const idLine = document.createElement('div');
+      idLine.style.cssText = 'font-size:10px;color:var(--fg-dim);font-family:monospace';
+      idLine.textContent = ext.id;
+      row.appendChild(idLine);
+
+      const btns = document.createElement('div');
+      btns.style.cssText = 'display:flex;gap:6px;margin-top:4px';
+
+      // Toggle button
+      const toggleBtn = document.createElement('button');
+      toggleBtn.style.cssText = 'padding:3px 8px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;font-size:11px;color:var(--fg-muted);transition:all 0.15s ease;cursor:pointer';
+      toggleBtn.textContent = ext.enabled !== false ? 'Disable' : 'Enable';
+      toggleBtn.addEventListener('click', async () => {
+        if (ext.enabled !== false) {
+          await safeInvoke('extensions:disable', ext.id);
+          ext.enabled = false;
+          toggleBtn.textContent = 'Enable';
+          toggleBtn.style.color = 'var(--accent)';
+        } else {
+          await safeInvoke('extensions:enable', ext.id);
+          ext.enabled = true;
+          toggleBtn.textContent = 'Disable';
+          toggleBtn.style.color = 'var(--fg-muted)';
+        }
+      });
+      btns.appendChild(toggleBtn);
+
+      // Remove button
+      const removeBtn = document.createElement('button');
+      removeBtn.style.cssText = 'padding:3px 8px;border:1px solid rgba(255,80,80,0.3);border-radius:6px;font-size:11px;color:#ff6b6b;transition:all 0.15s ease;cursor:pointer';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', async () => {
+        await safeInvoke('extensions:remove', ext.id);
+        renderExtensions(); // refresh list
+      });
+      btns.appendChild(removeBtn);
+
+      row.appendChild(btns);
+      panelBody.appendChild(row);
     });
     const storeBtn = document.createElement('button');
     storeBtn.className = 'btn';
