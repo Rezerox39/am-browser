@@ -31,17 +31,18 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 /* Drag region */
 .drag-region {
   -webkit-app-region: drag;
-  position: fixed; top: 0; left: 84px; right: 0; height: 52px;
+  position: fixed; top: 0; left: 84px; right: 84px; height: 52px;
   z-index: 10;
 }
 
-/* ── macOS Traffic Lights — LEFT side ────────────────────────
+/* ── macOS Traffic Lights — RIGHT side ───────────────────────
    Refined geometry, optical alignment, macOS-accurate colors.
-   Hit area extends via margin; icons are crisp 1.0px strokes. */
+   Hit area extends via margin; icons are crisp 1.0px strokes.
+   Order: RED (close) • YELLOW (minimize) • GREEN (maximize) */
 .win-controls {
-  position: fixed; top: 0; left: 0; height: 52px;
+  position: fixed; top: 0; right: 0; height: 52px;
   display: flex; align-items: center;
-  padding-left: 13px; z-index: 500;
+  padding-right: 13px; z-index: 500;
   -webkit-app-region: no-drag;
 }
 .win-dot {
@@ -111,7 +112,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 
 /* ── Tab strip ──────────────────────────────────────────────── */
 .tab-strip {
-  position: fixed; top: 0; left: 84px; right: 120px; height: 52px;
+  position: fixed; top: 0; left: 84px; right: 84px; height: 52px;
   display: flex; align-items: center; gap: 2px; z-index: 90;
   overflow-x: auto; scrollbar-width: none;
   -webkit-app-region: drag;

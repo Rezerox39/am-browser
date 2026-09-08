@@ -63,8 +63,9 @@ class AdBlockEngine {
       const host = pathIdx === -1 ? effective : effective.slice(0, pathIdx);
       if (!host || !host.includes('.')) return null;
       let suffix = pathIdx === -1 ? '' : effective.slice(pathIdx);
-      // Strip * and ^ wildcards from suffix — use only the meaningful prefix
-      suffix = suffix.replace(/[\^*]/g, '');
+      // Strip * and ^ wildcards — use only the path prefix before first wildcard
+      const starIdx = suffix.search(/[\^*]/);
+      if (starIdx !== -1) suffix = suffix.slice(0, starIdx);
       const fullMatch = !suffix;
       return { type: 'domainPrefix', host: host.toLowerCase(), suffix: suffix.toLowerCase(), exception, fullMatch };
     }
