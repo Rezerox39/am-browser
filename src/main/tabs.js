@@ -106,6 +106,13 @@ class Tab {
     wc.on('page-favicon-updated', safe((e, favicons) => {
       if (this._record && favicons && favicons.length > 0) this._record.favicon = favicons[0]
     }))
+    wc.on('did-start-navigation', safe((e, url, isInPlace, isMainFrame) => {
+      if (isMainFrame && this._record) {
+        this._record.loading = true
+        this._record.url = url
+        broadcast()
+      }
+    }))
     wc.on('did-start-loading', safe(() => {
       if (this._record) this._record.loading = true
       broadcast()

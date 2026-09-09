@@ -178,6 +178,9 @@ function register(win) {
   registerChannel('extensions:remove', (e, id) => {
     return require('./extensions').removeExtension(id);
   });
+  registerChannel('extensions:reload', (e, id) => {
+    return require('./extensions').reloadExtension(id);
+  });
 }
 
 module.exports = { register };

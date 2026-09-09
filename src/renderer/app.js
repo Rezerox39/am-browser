@@ -88,6 +88,9 @@
     homeEl.classList.remove('hidden');
     urlBar.style.display = 'none';
     urlEditBar.classList.add('hidden');
+    // Hide loading bar on home screen
+    const bar = document.getElementById('loadingBar');
+    if (bar) { bar.classList.remove('active', 'complete'); }
     // Hide the WebContentsView so the home screen is not covered by the page
     safeInvoke('tabs:showHome');
     setTimeout(() => homeInput.focus(), 50);
@@ -180,7 +183,22 @@
     activeTitle = title || '';
     renderTabs();
     syncView(mode || (url ? 'content' : 'home'));
+    updateLoadingBar();
   });
+  function updateLoadingBar() {
+    const bar = document.getElementById('loadingBar');
+    if (!bar) return;
+    const active = allTabs.find(t => t.id === activeId);
+    if (active && active.loading) {
+      bar.classList.remove('complete');
+      bar.classList.add('active');
+    } else if (bar.classList.contains('active')) {
+      bar.classList.remove('active');
+      bar.classList.add('complete');
+      setTimeout(() => bar.classList.remove('complete'), 300);
+    }
+  }
+
   api.on('tabs:focusAddressBar', () => openUrlEdit());
   api.on('window:maximized', isMax => {
     const dot = $('btnMaximize');

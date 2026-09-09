@@ -360,6 +360,28 @@ function removeExtension(extId) {
   }
 }
 
+function reloadExtension(extId) {
+  try {
+    const ses = session.defaultSession;
+    // Remove first
+    ses.removeExtension(extId);
+    // Re-load from disk
+    const registry = loadRegistry();
+    const entry = registry[extId];
+    if (!entry || !entry.path || !fs.existsSync(entry.path)) {
+      return { success: false, error: 'Extension not found or path invalid' };
+    }
+    ses.loadExtension(entry.path, { allowFileAccess: true }).then(() => {
+      logger.info('extensions', `Reloaded extension: ${entry.name || extId}`);
+    }).catch((e) => {
+      logger.warn('extensions', `Failed to reload ${extId}: ${e.message}`);
+    });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    CONTEXT MENU
    ═══════════════════════════════════════════════════════════════ */
@@ -426,5 +448,5 @@ function getExtensionsDir() { return EXTENSIONS_DIR; }
 module.exports = {
   announceSchemes, init, wireContextMenu, getExtensionList,
   setContextMenuEnabled, setWebStoreEnabled, getExtensions, getExtensionsDir,
-  enableExtension, disableExtension, removeExtension,
+  enableExtension, disableExtension, removeExtension, reloadExtension,
 };

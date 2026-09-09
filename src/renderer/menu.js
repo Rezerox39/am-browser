@@ -179,6 +179,16 @@
       });
       btns.appendChild(removeBtn);
 
+      // Reload button
+      const reloadBtn = document.createElement('button');
+      reloadBtn.style.cssText = 'padding:3px 8px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;font-size:11px;color:var(--fg-muted);transition:all 0.15s ease;cursor:pointer';
+      reloadBtn.textContent = 'Reload';
+      reloadBtn.addEventListener('click', async () => {
+        await safeInvoke('extensions:reload', ext.id);
+        toast('Extension reloaded');
+      });
+      btns.appendChild(reloadBtn);
+
       row.appendChild(btns);
       panelBody.appendChild(row);
     });

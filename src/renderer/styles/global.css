@@ -230,6 +230,49 @@ body.am-fullscreen .tab-strip,
 body.am-fullscreen .url-bar,
 body.am-fullscreen .url-edit-bar,
 body.am-fullscreen .win-controls,
+body.am-fullscreen .loading-bar,
 body.am-fullscreen #home {
   display: none !important;
+}
+
+/* ── Loading progress bar ─────────────────────────────────── */
+.loading-bar {
+  position: fixed;
+  top: 84px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 88;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.loading-bar.active {
+  opacity: 1;
+}
+.loading-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg, var(--accent), #4cc9f0, var(--accent));
+  border-radius: 1px;
+  animation: loading-slide 1.4s ease-in-out infinite;
+}
+.loading-bar.complete {
+  opacity: 1;
+}
+.loading-bar.complete::after {
+  width: 100%;
+  animation: loading-complete 0.25s ease-out forwards;
+}
+@keyframes loading-slide {
+  0%   { left: -30%; }
+  100% { left: 100%; }
+}
+@keyframes loading-complete {
+  0%   { width: 30%; left: 0; }
+  100% { width: 100%; left: 0; }
 }
