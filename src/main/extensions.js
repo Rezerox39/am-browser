@@ -7,6 +7,7 @@ const { ElectronChromeExtensions } = require('electron-chrome-extensions');
 const { installChromeWebStore, loadAllExtensions } = require('electron-chrome-web-store');
 const { buildChromeContextMenu } = require('electron-chrome-context-menu');
 const logger = require('./logger');
+const extensionBridge = require('./extension-apis/bridge');
 const tabs = require('./tabs');
 
 let extensions = null;
@@ -95,7 +96,13 @@ async function init(win) {
   // 1. Polyfill WebFrameMain before any library calls
   polyfillWebFrameMain();
 
-  // 2. UA override for site compatibility
+  // 2. Register extension API bridge (chrome.storage, chrome.scripting, etc.)
+  extensionBridge.register();
+
+  // 3. Inject bridge preload into extension contexts
+  injectBridgePreload(ses);
+
+  // 4. UA override for site compatibility
   try {
     const ua = ses.getUserAgent()
       .replace(/\sElectron\/\S+/, '')
@@ -107,7 +114,7 @@ async function init(win) {
 
   const modulePath = resolveExtensionModulePath();
 
-  // 3. Initialize ElectronChromeExtensions (tab/extension bridge)
+  // 5. Initialize ElectronChromeExtensions (tab/extension bridge)
   extensions = new ElectronChromeExtensions({
     session: ses,
     modulePath,
@@ -139,7 +146,7 @@ async function init(win) {
     },
   });
 
-  // 4. Wire lifecycle callbacks
+  // 6. Wire lifecycle callbacks
   tabs.setLifecycleCallbacks({
     onCreated(rec) {
       try {
@@ -155,7 +162,7 @@ async function init(win) {
     },
   });
 
-  // 5. Sync pre-existing tabs
+  // 7. Sync pre-existing tabs
   try {
     for (const rec of tabs.getAll()) {
       const view = tabs.getTabView(rec.id);
@@ -170,13 +177,13 @@ async function init(win) {
     logger.warn('extensions', 'Initial tab sync failed', { error: e.message });
   }
 
-  // 6. Ensure extension directories exist
+  // 8. Ensure extension directories exist
   ensureDirs();
 
-  // 7. Load existing unpacked extensions from persistent directory (restart persistence)
+  // 9. Load existing unpacked extensions from persistent directory (restart persistence)
   await loadPersistedExtensions(ses);
 
-  // 8. Install Chrome Web Store support
+  // 10. Install Chrome Web Store support
   if (webStoreEnabled) {
     try {
       await installChromeWebStore({
@@ -209,10 +216,10 @@ async function init(win) {
     }
   }
 
-  // 9. Record all extensions in persistent registry
+  // 11. Record all extensions in persistent registry
   await syncRegistryWithSession(ses);
 
-  // 10. Start MV3 service workers
+  // 12. Start MV3 service workers
   try {
     const all = ses.getAllExtensions();
     await Promise.all(all.map(async (ext) => {
@@ -410,6 +417,25 @@ function wireContextMenu() {
   } catch (e) {
     logger.warn('extensions', 'Context menu wiring failed', { error: e.message });
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BRIDGE PRELOAD INJECTION
+   ═══════════════════════════════════════════════════════════════ */
+function injectBridgePreload(ses) {
+  const resolvedPath = require.resolve(path.join(__dirname, '..', 'preload', 'preload-extension-bridge.js'));
+  app.on('web-contents-created', (event, wc) => {
+    if (wc.session !== ses) return;
+    wc.on('dom-ready', () => {
+      if (wc.isDestroyed()) return;
+      const url = wc.getURL();
+      if (url && url.startsWith('chrome-extension://')) {
+        const script = 'try{require(' + JSON.stringify(resolvedPath) + ')}catch(e){}';
+        wc.executeJavaScript(script, true).catch(() => {});
+      }
+    });
+  });
+  logger.info('extension-bridge', 'Preload injection wired via web-contents-created');
 }
 
 /* ═══════════════════════════════════════════════════════════════

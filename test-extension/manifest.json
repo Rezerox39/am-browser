@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "AM Bridge Test",
+  "version": "1.0",
+  "description": "Tests the extension API bridge",
+  "permissions": ["storage", "scripting", "alarms", "cookies", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Bridge Test"
+  }
+}
