@@ -60,6 +60,9 @@
     MENU_ITEMS.forEach(item => {
       const el = document.createElement('div');
       el.className = 'sheet-item';
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', item.label);
+      el.setAttribute('tabindex', '0');
       el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">' + (ICONS[item.label] || '') + '</svg><span>' + item.label + '</span>';
       el.addEventListener('click', () => handleAction(item));
       sideMenuGrid.appendChild(el);

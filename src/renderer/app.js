@@ -101,16 +101,23 @@
     for (const tab of allTabs) {
       const el = document.createElement('div');
       el.className = 'tab-chip' + (tab.id === activeId ? ' active' : '');
+      el.setAttribute('role', 'tab');
+      el.setAttribute('aria-label', (tab.title || 'New Tab') + (tab.loading ? ' (loading)' : ''));
+      el.setAttribute('tabindex', '0');
       el.innerHTML =
         '<span class="tc-favicon">' + (tab.loading ? '⟳' : favicon(tab.url)) + '</span>' +
         '<span class="tc-title">' + (tab.title || 'New Tab') + '</span>' +
         '<span class="tc-close">✕</span>';
       el.querySelector('.tc-close').addEventListener('click', e => { e.stopPropagation(); safeInvoke('tabs:close', tab.id); });
       el.addEventListener('click', () => { if (tab.id !== activeId) safeInvoke('tabs:setActive', tab.id); });
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (tab.id !== activeId) safeInvoke('tabs:setActive', tab.id); } });
       tabStrip.appendChild(el);
     }
     const addBtn = document.createElement('div');
     addBtn.className = 'tab-chip tc-add';
+    addBtn.setAttribute('role', 'button');
+    addBtn.setAttribute('aria-label', 'New tab');
+    addBtn.setAttribute('tabindex', '0');
     addBtn.innerHTML = '<span class="tc-plus">+</span>';
     addBtn.addEventListener('click', () => safeInvoke('tabs:create', {}));
     tabStrip.appendChild(addBtn);

@@ -4,7 +4,7 @@
   --fg-muted: #a0a0a0;
   --fg-dim: #606060;
   --accent: #5a83ff;
-  --border: #1a1a1a;
+  --border: rgba(255, 255, 255, 0.10);
   --radius-pill: 50px;
   --radius-md: 12px;
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -141,6 +141,7 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 }
 .tab-chip:hover .tc-close { opacity: 1; }
 .tab-chip .tc-close:hover { background: rgba(255,255,255,0.10); color: var(--fg); }
+.tab-chip .tc-close:focus-visible { outline: 2px solid rgba(90,131,255,0.4); outline-offset: -2px; opacity: 1; }
 .tab-chip.tc-add {
   width: 32px; padding: 0; justify-content: center;
   color: var(--fg-muted); background: transparent;
@@ -206,9 +207,10 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 
 /* Toast */
 #toast {
-  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
-  background: rgba(20,20,20,0.92); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
-  border: 1px solid var(--border); color: var(--fg);
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: rgba(25, 28, 35, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--fg);
   padding: 10px 20px; border-radius: 24px; font-size: 13px;
   opacity: 0; pointer-events: none; transition: all var(--transition); z-index: 950;
   white-space: nowrap; max-width: 80vw;
