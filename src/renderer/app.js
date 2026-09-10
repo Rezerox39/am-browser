@@ -44,6 +44,8 @@
     el.textContent = msg; el.classList.add('show');
     clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2200);
   }
+  function escapeHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
   async function safeInvoke(ch, ...a) { try { return await api.invoke(ch, ...a); } catch (e) { console.error('[AM] IPC:', ch, e); return undefined; } }
 
   function searchUrl(q) {

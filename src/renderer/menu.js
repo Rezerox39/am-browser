@@ -18,6 +18,8 @@
   let activeUrl = '';
 
   /* ── Helpers ─────────────────────────────────────────────── */
+  function escapeHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
   async function safeInvoke(ch, ...a) {
     try { return await api.invoke(ch, ...a); } catch { return undefined; }
   }
@@ -477,7 +479,7 @@
     d.innerHTML =
       '<div class="dl-item-icon" style="color:' + color + ';background:' + color + '15">' + icon + '</div>' +
       '<div class="dl-item-body">' +
-        '<div class="dl-item-name" title="' + dl.filename + '">' + dl.filename + '</div>' +
+        '<div class="dl-item-name" title="' + escapeHtml(dl.filename) + '">' + escapeHtml(dl.filename) + '</div>' +
         '<div class="dl-item-status">' + statusText + '</div>' +
         (isActive ?
           '<div class="dl-item-progress">' +
