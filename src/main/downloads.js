@@ -133,9 +133,18 @@ function init() {
 }
 
 function broadcast(channel, data) {
+  // Send to chrome window (triggers download bar notification)
   if (winRef && winRef.webContents && !winRef.webContents.isDestroyed()) {
     winRef.webContents.send(channel, data);
   }
+  // Send to menu overlay view (triggers Downloads panel live update)
+  try {
+    const tabs = require('./tabs');
+    const menuView = tabs.getMenuView();
+    if (menuView && menuView.webContents && !menuView.webContents.isDestroyed()) {
+      menuView.webContents.send(channel, data);
+    }
+  } catch {}
 }
 
 module.exports = { init, getAll, removeItem, clearAll, openFolder, openFile, setWindow };

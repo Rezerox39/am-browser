@@ -23,6 +23,7 @@ const ALLOWED_INVOKE = new Set([
 const ALLOWED_ON = new Set([
   'menu:changed',
   'menu:state',
+  'downloads:changed',
 ]);
 
 contextBridge.exposeInMainWorld('am', {
