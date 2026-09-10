@@ -1,4 +1,3 @@
-
 'use strict';
 
 const { dialog, shell, BrowserWindow } = require('electron');
@@ -25,6 +24,7 @@ function addItem(item) {
     state: 'progressing',
     savePath: item.savePath || '',
     startedAt: Date.now(),
+    mimeType: item.getMimeType ? item.getMimeType() : '',
   };
   items.unshift(record);
   return record;
@@ -64,10 +64,20 @@ function getDownloadDir() {
   return path.join(app.getPath('home'), 'Downloads');
 }
 
+// Ensure unique filename — appends (1), (2), etc. if file exists
+function uniquePath(filePath) {
+  if (!fs.existsSync(filePath)) return filePath;
+  const dir = path.dirname(filePath);
+  const ext = path.extname(filePath);
+  const base = path.basename(filePath, ext);
+  let n = 1;
+  while (fs.existsSync(path.join(dir, base + ' (' + n + ')' + ext))) n++;
+  return path.join(dir, base + ' (' + n + ')' + ext);
+}
+
 function init() {
   const { session } = require('electron');
   session.defaultSession.on('will-download', async (event, webContents, item) => {
-    event.preventDefault();
     let savePath;
     if (config.get().askWhereToSave) {
       const { canceled, filePath } = await dialog.showSaveDialog(
@@ -80,8 +90,7 @@ function init() {
       }
       savePath = filePath;
     } else {
-      savePath = path.join(getDownloadDir(), item.getFilename());
-      // Ensure parent directory exists
+      savePath = uniquePath(path.join(getDownloadDir(), item.getFilename()));
       const dir = path.dirname(savePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     }
@@ -112,7 +121,6 @@ function init() {
         updateItem(record.id, { state: 'failed' });
       }
       broadcast('downloads:changed', getAll());
-      // Persist
       config.update((d) => {
         d.downloads = items.map((i) => ({
           id: i.id, url: i.url, filename: i.filename,

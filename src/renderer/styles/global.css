@@ -127,6 +127,10 @@ input { background: transparent; border: none; color: var(--fg); font: inherit; 
 }
 .tab-chip:hover { background: rgba(255,255,255,0.04); color: var(--fg); }
 .tab-chip.active { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); color: var(--fg); }
+.tab-chip .tc-favicon-img {
+  width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+  object-fit: contain; image-rendering: auto;
+}
 .tab-chip .tc-favicon {
   width: 14px; height: 14px; border-radius: 3px; font-size: 9px;
   display: flex; align-items: center; justify-content: center;

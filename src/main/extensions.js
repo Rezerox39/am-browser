@@ -23,23 +23,31 @@ let installing = new Set();
    but WebFrameMain in Electron 31 does NOT have that method.
    Fix: polyfill it via WebContents.fromFrame() which IS supported.
    ═══════════════════════════════════════════════════════════════ */
-function polyfillWebFrameMain() {
-  try {
-    const { WebFrameMain } = require('electron');
-    if (WebFrameMain && WebFrameMain.prototype && typeof WebFrameMain.prototype.isDestroyed !== 'function') {
-      WebFrameMain.prototype.isDestroyed = function () {
-        try {
-          const wc = WebContents.fromFrame(this);
-          return !wc || wc.isDestroyed();
-        } catch {
-          return true;
+function patchWebStoreIPC() {
+  // electron-chrome-web-store v0.13 calls senderFrame.isDestroyed() on IPC
+  // events (chromeWebstore.beginInstall, chromeWebstore.completeInstall, etc.),
+  // but WebFrameMain in Electron 31 does NOT export isDestroyed().
+  // We monkey-patch ipcMain.handle to polyfill isDestroyed() on senderFrame
+  // for ALL channels, ensuring any library code that calls it works.
+  const { ipcMain } = require('electron');
+  const originalHandle = ipcMain.handle.bind(ipcMain);
+
+  ipcMain.handle = function(channel, listener) {
+    return originalHandle(channel, (event, ...args) => {
+      try {
+        const sf = event.senderFrame;
+        if (sf && typeof sf.isDestroyed !== 'function') {
+          sf.isDestroyed = function() {
+            try { return !event.sender || event.sender.isDestroyed(); }
+            catch { return true; }
+          };
         }
-      };
-      logger.info('extensions', 'Polyfilled WebFrameMain.isDestroyed() for Web Store compat');
-    }
-  } catch (e) {
-    logger.warn('extensions', 'Could not polyfill WebFrameMain', { error: e.message });
-  }
+      } catch {}
+      return listener(event, ...args);
+    });
+  };
+
+  logger.info('extensions', 'ipcMain.handle globally patched — WebFrameMain.isDestroyed() polyfilled');
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -93,8 +101,8 @@ async function init(win) {
   chromeWin = win;
   const ses = session.defaultSession;
 
-  // 1. Polyfill WebFrameMain before any library calls
-  polyfillWebFrameMain();
+  // 1. Patch IPC for Web Store compat (WebFrameMain.isDestroyed fix)
+  patchWebStoreIPC();
 
   // 2. Register extension API bridge (chrome.storage, chrome.scripting, etc.)
   extensionBridge.init();

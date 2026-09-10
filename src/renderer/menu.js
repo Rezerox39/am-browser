@@ -40,6 +40,7 @@
     { label: 'History', action: 'panel', panel: 'history', title: 'History' },
     { label: 'Downloads', action: 'panel', panel: 'downloads', title: 'Downloads' },
     { label: 'Refresh', action: 'refresh' },
+    { label: 'Adblock', action: 'toggleAdblock' },
     { label: 'Settings', action: 'panel', panel: 'settings', title: 'Settings' },
     { label: 'Site Settings', action: 'panel', panel: 'siteSettings', title: 'Site Settings' },
   ];
@@ -51,9 +52,25 @@
     'History': '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     'Downloads': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
     'Refresh': '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    'Adblock': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
     'Settings': '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     'Site Settings': '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>',
   };
+
+  let adblockEnabled = true;
+
+  async function refreshAdblockState() {
+    try {
+      const cfg = await safeInvoke('settings:get');
+      adblockEnabled = !!(cfg.adblock && cfg.adblock.enabled);
+    } catch {}
+    // Update the visual indicator on the adblock menu item
+    const abEl = sideMenuGrid.querySelector('[data-action="toggleAdblock"]');
+    if (abEl) {
+      const dot = abEl.querySelector('.ab-dot');
+      if (dot) dot.style.background = adblockEnabled ? '#28c840' : '#666';
+    }
+  }
 
   function buildMenu() {
     sideMenuGrid.innerHTML = '';
@@ -63,10 +80,25 @@
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', item.label);
       el.setAttribute('tabindex', '0');
-      el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">' + (ICONS[item.label] || '') + '</svg><span>' + item.label + '</span>';
+      el.setAttribute('data-action', item.action);
+      let extra = '';
+      if (item.action === 'toggleAdblock') {
+        extra = '<span class="ab-dot" style="width:6px;height:6px;border-radius:50%;background:#28c840;position:absolute;top:8px;right:8px;transition:background 0.2s"></span>';
+      }
+      el.innerHTML = extra + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">' + (ICONS[item.label] || '') + '</svg><span>' + item.label + '</span>';
       el.addEventListener('click', () => handleAction(item));
       sideMenuGrid.appendChild(el);
     });
+    refreshAdblockState();
+  }
+
+  async function toggleAdblock() {
+    try {
+      const cfg = await safeInvoke('settings:get');
+      const enabled = !(cfg.adblock && cfg.adblock.enabled);
+      await safeInvoke('settings:set', 'adblock', { ...(cfg.adblock || {}), enabled: enabled });
+      toast(enabled ? 'Ad blocking ON' : 'Ad blocking OFF');
+    } catch {}
   }
 
   function handleAction(item) {
@@ -76,6 +108,8 @@
     } else if (item.action === 'refresh') {
       safeInvoke('tabs:reload');
       closeOverlay();
+    } else if (item.action === 'toggleAdblock') {
+      toggleAdblock();
     } else if (item.action === 'panel') {
       openPanel(item.panel, item.title);
     }
@@ -308,10 +342,19 @@
     panelBody.appendChild(row('User Agent', uaInput));
   }
 
+  function goToMenu() {
+    panel.classList.remove('open');
+    currentPanel = '';
+    panelBody.innerHTML = '';
+    panelTitle.textContent = '';
+    sideMenu.classList.add('open');
+    // Keep the menu overlay view on-screen
+  }
+
   /* ── Event wiring ────────────────────────────────────────── */
   backdrop.addEventListener('click', closeOverlay);
   $('menu-close-btn').addEventListener('click', closeOverlay);
-  $('panel-back').addEventListener('click', closeOverlay);
+  $('panel-back').addEventListener('click', goToMenu);
   panelSearch.addEventListener('input', loadPanel);
   $('sm-history').addEventListener('click', () => openPanel('history', 'History'));
   $('sm-bookmarks').addEventListener('click', () => openPanel('bookmarks', 'Bookmarks'));
@@ -327,6 +370,7 @@
     if (isOpen) {
       backdrop.classList.add('open');
       sideMenu.classList.add('open');
+      refreshAdblockState();
     } else {
       backdrop.classList.remove('open');
       sideMenu.classList.remove('open');

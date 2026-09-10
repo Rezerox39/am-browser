@@ -36,6 +36,7 @@
   let _menuOpen = false;
 
   function favicon(url) { try { return new URL(url).hostname[0]?.toUpperCase() || '?'; } catch { return '?'; } }
+  function faviconUrl(url) { try { return 'https://www.google.com/s2/favicons?domain=' + new URL(url).hostname + '&sz=32'; } catch { return ''; } }
   function fmtBytes(b) { if (!b || isNaN(b)) return '0 B'; const u = ['B','KB','MB','GB']; let i = 0, n = b; while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + ' ' + u[i]; }
   function toast(msg) {
     let el = $('toast');
@@ -105,7 +106,12 @@
       el.setAttribute('aria-label', (tab.title || 'New Tab') + (tab.loading ? ' (loading)' : ''));
       el.setAttribute('tabindex', '0');
       el.innerHTML =
-        '<span class="tc-favicon">' + (tab.loading ? '⟳' : favicon(tab.url)) + '</span>' +
+        (function() {
+        const favUrl = tab.url ? faviconUrl(tab.url) : '';
+        return favUrl
+          ? '<img class="tc-favicon-img" src="' + favUrl + '" width="14" height="14" onerror="this.style.display=&quot;none&quot;;this.nextElementSibling.style.display=&quot;flex&quot;" /><span class="tc-favicon tc-fallback" style="display:none">' + favicon(tab.url) + '</span>'
+          : '<span class="tc-favicon">' + favicon(tab.url) + '</span>';
+      })() +
         '<span class="tc-title">' + (tab.title || 'New Tab') + '</span>' +
         '<span class="tc-close">✕</span>';
       el.querySelector('.tc-close').addEventListener('click', e => { e.stopPropagation(); safeInvoke('tabs:close', tab.id); });

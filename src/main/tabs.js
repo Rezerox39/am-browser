@@ -110,6 +110,13 @@ class Tab {
       if (isMainFrame && this._record) {
         this._record.loading = true
         this._record.url = url
+        // Set a URL-based title immediately so tabs show site info
+        if (!this._record.title || this._record.title === 'New Tab') {
+          try {
+            const u = new URL(url)
+            this._record.title = u.hostname.replace(/^www\./, '')
+          } catch {}
+        }
         broadcast()
       }
     }))
