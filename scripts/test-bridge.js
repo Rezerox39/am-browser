@@ -9,6 +9,7 @@ const path = require('path');
 
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('disable-dev-shm-usage');
 
 const results = [];
 function check(name, cond, info) {

@@ -3,45 +3,49 @@
 const { Notification } = require('electron');
 const logger = require('../logger');
 
-function handleNotificationCreate(args) {
-  const { id, title, message, type, iconUrl, priority } = args || {};
-  if (!title || !message) return Promise.reject(new Error('title and message required'));
+// Per-extension notification tracking
+const extNotifications = new Map(); // extensionId -> Set<id>
 
-  const notifOptions = {
-    title,
-    body: message,
-    silent: priority === 'low',
-  };
-
-  // iconUrl is a chrome-extension:// URL; we can try to load it
-  if (iconUrl && iconUrl.startsWith('chrome-extension://')) {
-    try {
-      const { protocol } = require('electron');
-      // For now, skip icon loading from extension URLs in notifications
-      // Electron's Notification doesn't easily support chrome-extension:// icons
-    } catch {}
-  }
-
-  try {
-    const n = new Notification(notifOptions);
-    n.show();
-    return Promise.resolve({ id: id || String(Date.now()) });
-  } catch (e) {
-    return Promise.reject(e);
-  }
+function track(extId, notifId) {
+  if (!extNotifications.has(extId)) extNotifications.set(extId, new Set());
+  extNotifications.get(extId).add(notifId);
 }
 
-function handleNotificationClear(id) {
-  // Electron doesn't support programmatic notification dismissal
-  return Promise.resolve(true);
+function untrack(extId, notifId) {
+  const s = extNotifications.get(extId);
+  if (s) s.delete(notifId);
 }
 
-function handleNotificationGetAll() {
-  return Promise.resolve([]);
+async function create({ context, args }) {
+  const [options = {}] = args;
+  const id = options.id || `notif_${Date.now()}`;
+  const n = new Notification({ title: options.title || '', body: options.message || options.body || '', silent: options.priority === 'low' });
+  n.show();
+  track(context.extensionId, id);
+  return id;
 }
 
-module.exports = {
-  handleNotificationCreate,
-  handleNotificationClear,
-  handleNotificationGetAll,
-};
+async function update({ context, args }) {
+  const [id, options = {}] = args;
+  // Electron doesn't support updating shown notifications; create a new one
+  const n = new Notification({ title: options.title || '', body: options.message || options.body || '' });
+  n.show();
+  return true;
+}
+
+async function clear({ context, args }) {
+  const [id] = args;
+  untrack(context.extensionId, id);
+  return true;
+}
+
+async function getAll({ context }) {
+  const s = extNotifications.get(context.extensionId);
+  return s ? Array.from(s) : [];
+}
+
+function destroyExtension(extensionId) {
+  extNotifications.delete(extensionId);
+}
+
+module.exports = { create, update, clear, getAll, destroyExtension };

@@ -1,90 +1,79 @@
 'use strict';
 
-const logger = require('../logger');
+// Per-extension timer maps: extensionId -> Map<name, { timer, alarm }>
+const timers = new Map();
 
-// In-memory alarm store per extension
-const alarms = new Map(); // extensionId -> Map<name, alarm>
+function extensionTimers(extensionId) {
+  if (!timers.has(extensionId)) timers.set(extensionId, new Map());
+  return timers.get(extensionId);
+}
 
-function handleAlarmCreate(extensionId, name, alarmInfo) {
-  if (!alarms.has(extensionId)) alarms.set(extensionId, new Map());
-  const extAlarms = alarms.get(extensionId);
+function create({ context, args }) {
+  const [name = '', alarmInfo = {}] = args;
+  const extId = context.extensionId;
+  const map = extensionTimers(extId);
 
-  const delay = alarmInfo.delayInMinutes || 0;
-  const period = alarmInfo.periodInMinutes || 0;
+  const delay = typeof alarmInfo.delayInMinutes === 'number'
+    ? alarmInfo.delayInMinutes * 60 * 1000
+    : typeof alarmInfo.when === 'number'
+      ? Math.max(0, alarmInfo.when - Date.now())
+      : 0;
 
-  // Clear existing timer for this alarm
-  const existing = extAlarms.get(name);
-  if (existing && existing.timer) clearTimeout(existing.timer);
+  const period = typeof alarmInfo.periodInMinutes === 'number'
+    ? alarmInfo.periodInMinutes * 60 * 1000
+    : null;
 
-  const alarmData = {
-    name,
-    scheduledTime: Date.now() + delay * 60000,
-    periodInMinutes: period,
-    timer: null,
-  };
+  // Clear existing timer
+  const old = map.get(name);
+  if (old) clearTimeout(old.timer);
 
-  const fireAlarm = () => {
-    alarmData.scheduledTime = Date.now() + period * 60000;
-    // Notify extension via IPC (fire-and-forget event)
-    try {
-      const { webContents } = require('electron');
-      const allWC = webContents.getAllWebContents();
-      for (const wc of allWC) {
-        if (!wc.isDestroyed() && wc.getURL().startsWith('chrome-extension://')) {
-          wc.send(`am-ext-alarm`, extensionId, name);
-        }
-      }
-    } catch {}
-    if (period > 0) {
-      alarmData.timer = setTimeout(fireAlarm, period * 60000);
+  const fire = () => {
+    context.dispatchEvent('alarms.onAlarm', { name, scheduledTime: Date.now() });
+    if (period != null) {
+      const timer = setTimeout(fire, period);
+      map.set(name, { timer, alarm: { name, scheduledTime: Date.now() + period, periodInMinutes: alarmInfo.periodInMinutes } });
+    } else {
+      map.delete(name);
     }
   };
 
-  alarmData.timer = setTimeout(fireAlarm, delay * 60000);
-  extAlarms.set(name, alarmData);
+  const timer = setTimeout(fire, Math.max(0, delay));
+  map.set(name, { timer, alarm: { name, scheduledTime: Date.now() + delay, periodInMinutes: alarmInfo.periodInMinutes } });
+  return undefined;
 }
 
-function handleAlarmGet(extensionId, name) {
-  const extAlarms = alarms.get(extensionId);
-  if (!extAlarms) return null;
-  const alarm = extAlarms.get(name);
-  if (!alarm) return null;
-  return { name: alarm.name, scheduledTime: alarm.scheduledTime, periodInMinutes: alarm.periodInMinutes || undefined };
+function get({ context, args }) {
+  const [name = ''] = args;
+  return extensionTimers(context.extensionId).get(name)?.alarm || null;
 }
 
-function handleAlarmGetAll(extensionId) {
-  const extAlarms = alarms.get(extensionId);
-  if (!extAlarms) return [];
-  return Array.from(extAlarms.values()).map(a => ({
-    name: a.name,
-    scheduledTime: a.scheduledTime,
-    periodInMinutes: a.periodInMinutes || undefined,
-  }));
+function getAll({ context }) {
+  return Array.from(extensionTimers(context.extensionId).values()).map(e => e.alarm);
 }
 
-function handleAlarmClear(extensionId, name) {
-  const extAlarms = alarms.get(extensionId);
-  if (!extAlarms) return true;
-  const alarm = extAlarms.get(name);
-  if (alarm && alarm.timer) clearTimeout(alarm.timer);
-  extAlarms.delete(name);
+function clear({ context, args }) {
+  const [name = ''] = args;
+  const map = extensionTimers(context.extensionId);
+  const entry = map.get(name);
+  if (!entry) return false;
+  clearTimeout(entry.timer);
+  map.delete(name);
   return true;
 }
 
-function handleAlarmClearAll(extensionId) {
-  const extAlarms = alarms.get(extensionId);
-  if (!extAlarms) return true;
-  for (const alarm of extAlarms.values()) {
-    if (alarm.timer) clearTimeout(alarm.timer);
-  }
-  alarms.delete(extensionId);
-  return true;
+function clearAll({ context }) {
+  const map = extensionTimers(context.extensionId);
+  for (const entry of map.values()) clearTimeout(entry.timer);
+  const had = map.size > 0;
+  map.clear();
+  return had;
 }
 
-module.exports = {
-  handleAlarmCreate,
-  handleAlarmGet,
-  handleAlarmGetAll,
-  handleAlarmClear,
-  handleAlarmClearAll,
-};
+function destroyExtension(extensionId) {
+  const map = timers.get(extensionId);
+  if (!map) return;
+  for (const entry of map.values()) clearTimeout(entry.timer);
+  timers.delete(extensionId);
+}
+
+module.exports = { create, get, getAll, clear, clearAll, destroyExtension };

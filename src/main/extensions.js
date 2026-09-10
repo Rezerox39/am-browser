@@ -97,7 +97,7 @@ async function init(win) {
   polyfillWebFrameMain();
 
   // 2. Register extension API bridge (chrome.storage, chrome.scripting, etc.)
-  extensionBridge.register();
+  extensionBridge.init();
 
   // 3. Inject bridge preload into extension contexts
   injectBridgePreload(ses);
@@ -330,6 +330,7 @@ function disableExtension(extId) {
   try {
     const ses = session.defaultSession;
     ses.removeExtension(extId);
+    extensionBridge.unregisterExtension(extId);
     const registry = loadRegistry();
     if (registry[extId]) {
       registry[extId].enabled = false;
@@ -346,6 +347,7 @@ function removeExtension(extId) {
   try {
     const ses = session.defaultSession;
     ses.removeExtension(extId);
+    extensionBridge.unregisterExtension(extId);
     const registry = loadRegistry();
     if (registry[extId]) {
       const name = registry[extId].name || extId;
@@ -372,6 +374,7 @@ function reloadExtension(extId) {
     const ses = session.defaultSession;
     // Remove first
     ses.removeExtension(extId);
+    extensionBridge.unregisterExtension(extId);
     // Re-load from disk
     const registry = loadRegistry();
     const entry = registry[extId];
@@ -435,7 +438,24 @@ function injectBridgePreload(ses) {
       }
     });
   });
-  logger.info('extension-bridge', 'Preload injection wired via web-contents-created');
+  // Register bridge IPC + lifecycle
+  const bridge = extensionBridge.init();
+  // Hook into webContents creation to register extension contexts
+  app.on('web-contents-created', (event, wc) => {
+    if (wc.session !== ses) return;
+    if (wc.getType() === 'backgroundPage' || wc.getType() === 'serviceWorker') {
+      wc.on('dom-ready', () => {
+        if (wc.isDestroyed()) return;
+        const url = wc.getURL();
+        const match = url.match(/^chrome-extension:\/\/([a-z0-9]+)/i);
+        if (match) {
+          const ext = ses.getAllExtensions().find(e => e.id === match[1]);
+          if (ext) extensionBridge.registerExtension(ext, wc);
+        }
+      });
+    }
+  });
+  logger.info('extension-bridge', 'Lifecycle management wired');
 }
 
 /* ═══════════════════════════════════════════════════════════════

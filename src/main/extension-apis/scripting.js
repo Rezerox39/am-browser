@@ -1,74 +1,64 @@
 'use strict';
 
 const { webContents } = require('electron');
-const logger = require('../logger');
 
-// chrome.scripting.executeScript
-function handleExecuteScript(args) {
-  const { target, func, files, world } = args || {};
-  if (!target) return Promise.reject(new Error('target is required'));
+function findTab(tabId) {
+  if (!tabId) throw new Error('tabId is required');
+  const wc = webContents.getAllWebContents().find(w => w.id === tabId);
+  if (!wc || wc.isDestroyed()) throw new Error(`Tab ${tabId} not found`);
+  return wc;
+}
 
-  let wc = null;
-  if (target.tabId) {
-    wc = webContents.getAllWebContents().find(w => w.id === target.tabId);
-  }
-  if (!wc || wc.isDestroyed()) return Promise.reject(new Error('Tab not found'));
-
+async function executeScript({ context, args }) {
+  const [details = {}] = args;
+  const target = details.target;
+  if (!target || !target.tabId) throw new Error('target.tabId is required');
+  const wc = findTab(target.tabId);
   const results = [];
 
-  if (files && Array.isArray(files)) {
-    // Inject JS files
-    const promises = files.map(file =>
-      wc.executeJavaScript(`(function(){var s=document.createElement('script');s.src=${JSON.stringify(file)};document.head.appendChild(s);})()`, true)
-        .then(() => results.push({ result: null }))
-        .catch(e => results.push({ error: e.message }))
-    );
-    return Promise.all(promises).then(() => results);
+  if (details.files && Array.isArray(details.files)) {
+    for (const file of details.files) {
+      try {
+        await wc.executeJavaScript(`(function(){var s=document.createElement('script');s.src=${JSON.stringify(file)};document.head.appendChild(s);})()`, true);
+        results.push({ result: null });
+      } catch (e) {
+        results.push({ error: e.message });
+      }
+    }
+    return results;
   }
 
-  if (func) {
-    // Execute function in page context
-    const code = typeof func === 'string' ? func : `(${func.toString()})()`;
-    return wc.executeJavaScript(code, true)
-      .then(result => [{ result }])
-      .catch(e => [{ error: e.message }]);
+  if (details.func) {
+    const code = typeof details.func === 'string' ? details.func : `(${details.func.toString()})()`;
+    try {
+      const result = await wc.executeJavaScript(code, true);
+      return [{ result }];
+    } catch (e) {
+      return [{ error: e.message }];
+    }
   }
 
-  return Promise.reject(new Error('func or files required'));
+  throw new Error('func or files required');
 }
 
-// chrome.scripting.insertCSS
-function handleInsertCSS(args) {
-  const { target, css, files } = args || {};
-  if (!target) return Promise.reject(new Error('target is required'));
+async function insertCSS({ context, args }) {
+  const [details = {}] = args;
+  if (!details.target || !details.target.tabId) throw new Error('target.tabId is required');
+  const wc = findTab(details.target.tabId);
 
-  let wc = null;
-  if (target.tabId) {
-    wc = webContents.getAllWebContents().find(w => w.id === target.tabId);
+  if (details.css) {
+    await wc.insertCSS(details.css);
+    return { result: null };
   }
-  if (!wc || wc.isDestroyed()) return Promise.reject(new Error('Tab not found'));
-
-  if (css) {
-    return wc.insertCSS(css).then(() => ({ result: null })).catch(e => ({ error: e.message }));
+  if (details.files && Array.isArray(details.files)) {
+    for (const f of details.files) {
+      try { await wc.insertCSS(`@import url("${f}");`); } catch {}
+    }
+    return { result: null };
   }
-  if (files && Array.isArray(files)) {
-    const promises = files.map(f =>
-      wc.insertCSS(`@import url("${f}");`).catch(() => {})
-    );
-    return Promise.all(promises).then(() => ({ result: null }));
-  }
-  return Promise.reject(new Error('css or files required'));
+  throw new Error('css or files required');
 }
 
-// chrome.scripting.removeCSS
-function handleRemoveCSS(args) {
-  // Electron doesn't support removing specific injected CSS
-  // Return success silently
-  return Promise.resolve({ result: null });
-}
+async function removeCSS() { return { result: null }; }
 
-module.exports = {
-  handleExecuteScript,
-  handleInsertCSS,
-  handleRemoveCSS,
-};
+module.exports = { executeScript, insertCSS, removeCSS };
