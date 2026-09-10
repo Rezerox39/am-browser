@@ -83,7 +83,7 @@ class Tab {
     // Any event that can fire on a webContents AFTER destroy() (Electron queues
     // these) must not touch destroyed objects — that was the Windows
     // "Object has been destroyed" crash in broadcast().
-    const safe = (fn) => () => { if (!alive()) return; try { fn() } catch (e) { logger.warn('tabs', 'event handler failed', { error: e.message }) } }
+    const safe = (fn) => (...args) => { if (!alive()) return; try { fn(...args) } catch (e) { logger.warn('tabs', 'event handler failed', { error: e.message }) } }
 
     wc.on('did-navigate', safe(() => {
       if (this._record) {

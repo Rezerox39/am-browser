@@ -88,45 +88,21 @@ function init() {
   const ses = session.defaultSession;
   logger.info('downloads', 'init() called — attaching will-download to defaultSession');
 
-  ses.on('will-download', async (event, webContents, item) => {
+  ses.on('will-download', (event, webContents, item) => {
     logger.info('downloads', `will-download fired: ${item.getFilename()} from ${webContents.getURL()}`);
 
     try {
-      // Compute default save path
-      const defaultPath = path.join(getDownloadDir(), item.getFilename());
-      const savePath = uniquePath(defaultPath);
+      // Auto-save to ~/Downloads with unique filename — NO DIALOG, ever
+      const savePath = uniquePath(path.join(getDownloadDir(), item.getFilename()));
       const dir = path.dirname(savePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      item.savePath = savePath;
 
-      // Create record IMMEDIATELY so the panel shows the download instantly
+      // Create record IMMEDIATELY — panel shows download the instant it starts
       const record = addItem(item);
       updateItem(record.id, { savePath, totalBytes: item.getTotalBytes() });
       broadcast('downloads:changed', getAll());
-
-      // If "ask where to save" is enabled, show dialog (but record already exists)
-      const { dialog } = require('electron');
-      if (config.get().askWhereToSave) {
-        try {
-          const { canceled, filePath } = await dialog.showSaveDialog(winRef, { defaultPath: savePath });
-          if (canceled || !filePath) {
-            // User cancelled — remove the record and cancel the download
-            removeItem(record.id);
-            broadcast('downloads:changed', getAll());
-            try { item.cancel(); } catch {}
-            return;
-          }
-          // Update to user-chosen path
-          const newPath = uniquePath(filePath);
-          updateItem(record.id, { savePath: newPath });
-          item.savePath = newPath;
-        } catch (e) {
-          logger.warn('downloads', 'Save dialog failed, using default path', { error: e.message });
-        }
-      } else {
-        item.savePath = savePath;
-      }
-
-      logger.info('downloads', `Download started: ${record.filename} -> ${record.savePath}`);
+      logger.info('downloads', `Download started: ${record.filename} -> ${savePath}`);
 
       item.on('updated', (e, state) => {
         try {
