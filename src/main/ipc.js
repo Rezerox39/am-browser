@@ -164,6 +164,14 @@ function register(win) {
   // ── Adblock ───────────────────────────────────────────────────
   registerChannel('adblock:getStats', () => adblock.stats());
   registerChannel('adblock:isEnabled', () => adblock.isEnabled());
+  registerChannel('adblock:setEnabled', (e, enabled) => {
+    config.update((d) => {
+      if (!d.adblock) d.adblock = { enabled: true, lists: { starter: true }, customRules: [] };
+      d.adblock.enabled = !!enabled;
+    });
+    adblock.reload();
+    return true;
+  });
 
   // ── Extensions ────────────────────────────────────────────────
   registerChannel('extensions:getAll', () => {

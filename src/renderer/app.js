@@ -223,6 +223,57 @@
     }
   });
 
+
+  // ── Download notification bar ────────────────────────────────
+  const dlBar = $('downloadBar');
+  let dlAutoHide = null;
+  api.on('downloads:changed', (downloads) => {
+    if (!dlBar || !Array.isArray(downloads)) return;
+    const active = downloads.filter(d => d.state === 'progressing');
+    const recent = downloads.filter(d => d.state === 'complete' || d.state === 'failed' || d.state === 'cancelled');
+    const latest = downloads[0];
+    if (!latest) { dlBar.classList.add('hidden'); return; }
+
+    if (active.length > 0) {
+      // Show progress bar
+      const a = active[0];
+      const pct = a.totalBytes > 0 ? Math.min(100, Math.round((a.receivedBytes / a.totalBytes) * 100)) : 0;
+      dlBar.classList.remove('hidden', 'complete', 'failed');
+      dlBar.classList.add('active');
+      dlBar.innerHTML = '<div class="dl-bar-inner">' +
+        '<div class="dl-bar-info">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+          '<span class="dl-bar-name">' + escapeHtml(a.filename) + '</span>' +
+          '<span class="dl-bar-pct">' + pct + '%</span>' +
+        '</div>' +
+        '<div class="dl-bar-track"><div class="dl-bar-fill" style="width:' + pct + '%"></div></div>' +
+      '</div>';
+      clearTimeout(dlAutoHide);
+    } else if (latest.state === 'complete') {
+      dlBar.classList.remove('hidden', 'active');
+      dlBar.classList.add('complete');
+      dlBar.innerHTML = '<div class="dl-bar-inner">' +
+        '<div class="dl-bar-info">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+          '<span class="dl-bar-name">' + escapeHtml(latest.filename) + '</span>' +
+          '<span class="dl-bar-status">Downloaded</span>' +
+        '</div>' +
+      '</div>';
+      dlAutoHide = setTimeout(() => dlBar.classList.add('hidden'), 4000);
+    } else if (latest.state === 'failed' || latest.state === 'cancelled') {
+      dlBar.classList.remove('hidden', 'active', 'complete');
+      dlBar.classList.add('failed');
+      dlBar.innerHTML = '<div class="dl-bar-inner">' +
+        '<div class="dl-bar-info">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>' +
+          '<span class="dl-bar-name">' + escapeHtml(latest.filename) + '</span>' +
+          '<span class="dl-bar-status">' + (latest.state === 'cancelled' ? 'Cancelled' : 'Failed') + '</span>' +
+        '</div>' +
+      '</div>';
+      dlAutoHide = setTimeout(() => dlBar.classList.add('hidden'), 4000);
+    }
+  });
+
   (async () => {
     await initI18n(); applyI18n();
     try {

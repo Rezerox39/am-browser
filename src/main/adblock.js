@@ -28,7 +28,9 @@ function init() {
     if (blocker) {
       wireSession();
       const s = blocker.stats ? blocker.stats() : {};
-      logger.info('adblock', `Initialized — ${s.networkFilters || '?'} network filters, ${s.cosmeticsFilters || '?'} cosmetic filters`);
+      logger.info('adblock', 'Initialized — ' + (s.networkFilters || '?') + ' network filters, ' + (s.cosmeticsFilters || '?') + ' cosmetic filters');
+    } else {
+      logger.warn('adblock', 'No filter lists loaded — ad blocking inactive');
     }
   } catch (e) {
     logger.error('adblock', 'Failed to initialize blocker', { error: e.message });
@@ -133,8 +135,9 @@ function setSiteAdblock(wcId, enabled) {
 }
 
 function getSiteAdblock(wcId) {
+  // Per-site override wins; otherwise use the LIVE global toggle
   if (siteAdblockState.has(wcId)) return siteAdblockState.get(wcId);
-  return config.get().adblock.enabled;
+  try { return !!(config.get().adblock && config.get().adblock.enabled); } catch { return true; }
 }
 
 function removeSite(wcId) {

@@ -15,7 +15,7 @@ const ALLOWED_INVOKE = new Set([
   'clipboard:copy',
   'window:minimize', 'window:maximize', 'window:close', 'window:isMaximized',
   'i18n:getAvailable', 'i18n:setLocale', 'i18n:getStrings',
-  'adblock:getStats', 'adblock:isEnabled',
+  'adblock:getStats', 'adblock:isEnabled', 'adblock:setEnabled',
   'extensions:getAll', 'extensions:reload',
 ]);
 

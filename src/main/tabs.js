@@ -125,7 +125,13 @@ class Tab {
       broadcast()
     }))
     wc.on('did-stop-loading', safe(() => {
-      if (this._record) this._record.loading = false
+      if (this._record) {
+        this._record.loading = false
+        // Fallback title from URL if page didn't fire page-title-updated
+        if ((!this._record.title || this._record.title === 'New Tab') && this._record.url) {
+          try { const u = new URL(this._record.url); this._record.title = u.hostname.replace(/^www\./, ''); } catch {}
+        }
+      }
       broadcast()
     }))
     wc.on('did-fail-load', safe((e, errorCode, errorDesc, validatedUrl) => {
@@ -321,6 +327,11 @@ function create(opts = {}) {
   try { lifecycle.onCreated(record) } catch (e) { logger.warn('tabs', 'onCreated hook failed', { error: e.message }) }
 
   if (opts.url) {
+    // Set hostname as title immediately so tab shows site info
+    try {
+      const u = new URL(opts.url)
+      record.title = u.hostname.replace(/^www\./, '')
+    } catch { record.title = opts.url }
     tab.loadURL(opts.url)
   } else {
     record.title = 'New Tab'

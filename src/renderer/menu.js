@@ -96,9 +96,9 @@
 
   async function toggleAdblock() {
     try {
-      const cfg = await safeInvoke('settings:get');
-      const enabled = !(cfg.adblock && cfg.adblock.enabled);
-      await safeInvoke('settings:set', 'adblock', { ...(cfg.adblock || {}), enabled: enabled });
+      const enabled = !adblockEnabled;
+      await safeInvoke('adblock:setEnabled', enabled);
+      adblockEnabled = enabled;
       toast(enabled ? 'Ad blocking ON' : 'Ad blocking OFF');
     } catch {}
   }

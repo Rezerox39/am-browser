@@ -1,27 +1,22 @@
 'use strict';
 
-const { shell } = require('electron');
+const { shell, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 const logger = require('./logger');
-const { app } = require('electron');
 
 let items = [];
 let winRef = null;
 
 function setWindow(w) { winRef = w; }
-
 function getAll() { return items; }
 
-// Sanitize filename for Windows — remove illegal chars, fallback if empty
+/* ── Filename sanitization ─────────────────────────────────── */
 function sanitizeFilename(name) {
   if (!name || typeof name !== 'string') return '';
-  // Remove characters illegal on Windows
   let clean = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
-  // Collapse whitespace
   clean = clean.replace(/\s+/g, ' ');
-  // Limit length (Windows MAX_PATH)
   if (clean.length > 200) clean = clean.slice(0, 200);
   return clean;
 }
@@ -38,20 +33,11 @@ function addItem(item) {
     startedAt: Date.now(),
     mimeType: '',
   };
-  try {
-    const rawUrl = item.getURL ? item.getURL() : '';
-    record.url = typeof rawUrl === 'string' ? rawUrl : '';
-  } catch {}
-  try {
-    const rawName = item.getFilename ? item.getFilename() : '';
-    record.filename = sanitizeFilename(rawName) || 'download';
-  } catch {}
-  try {
-    const rawMime = item.getMimeType ? item.getMimeType() : '';
-    record.mimeType = typeof rawMime === 'string' ? rawMime : '';
-  } catch {}
+  try { const u = item.getURL ? item.getURL() : ''; record.url = typeof u === 'string' ? u : ''; } catch {}
+  try { const n = item.getFilename ? item.getFilename() : ''; record.filename = sanitizeFilename(n) || 'download'; } catch {}
+  try { const m = item.getMimeType ? item.getMimeType() : ''; record.mimeType = typeof m === 'string' ? m : ''; } catch {}
   items.unshift(record);
-  try { logger.info('downloads', 'Added download: ' + record.filename + ' from ' + record.url); } catch {}
+  try { logger.info('downloads', 'Added: ' + record.filename); } catch {}
   return record;
 }
 
@@ -64,24 +50,17 @@ function removeItem(id) {
   items = items.filter((i) => i.id !== id);
 }
 
-function clearAll() {
-  items = [];
-}
+function clearAll() { items = []; }
 
 function openFolder(filePath) {
   try {
-    if (filePath && fs.existsSync(filePath)) {
-      shell.showItemInFolder(filePath);
-    } else {
-      shell.showItemInFolder(getDownloadDir());
-    }
+    if (filePath && fs.existsSync(filePath)) shell.showItemInFolder(filePath);
+    else shell.showItemInFolder(getDownloadDir());
   } catch {}
 }
 
 function openFile(filePath) {
-  try {
-    shell.openPath(filePath);
-  } catch {}
+  try { shell.openPath(filePath); } catch {}
 }
 
 function getDownloadDir() {
@@ -89,9 +68,7 @@ function getDownloadDir() {
     const dir = path.join(app.getPath('home'), 'Downloads');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     return dir;
-  } catch {
-    return app.getPath('home');
-  }
+  } catch { return app.getPath('home'); }
 }
 
 function uniquePath(filePath) {
@@ -103,49 +80,97 @@ function uniquePath(filePath) {
     let n = 1;
     while (fs.existsSync(path.join(dir, base + ' (' + n + ')' + ext))) n++;
     return path.join(dir, base + ' (' + n + ')' + ext);
-  } catch {
-    return filePath + '-' + Date.now();
+  } catch { return filePath + '-' + Date.now(); }
+}
+
+/* ── Type classification ───────────────────────────────────── */
+function classifyType(mimeType, filename) {
+  const m = (mimeType || '').toLowerCase();
+  const ext = (filename || '').split('.').pop().toLowerCase();
+  if (m.includes('image') || ['jpg','jpeg','png','gif','webp','svg','bmp','ico'].includes(ext)) return 'image';
+  if (m.includes('video') || ['mp4','webm','mkv','avi','mov','flv'].includes(ext)) return 'video';
+  if (m.includes('audio') || ['mp3','wav','ogg','flac','aac','m4a'].includes(ext)) return 'audio';
+  if (m.includes('pdf') || ext === 'pdf') return 'pdf';
+  if (['zip','rar','7z','tar','gz','bz2'].includes(ext)) return 'archive';
+  if (['exe','msi','app','dmg'].includes(ext)) return 'executable';
+  if (['doc','docx','xls','xlsx','ppt','pptx'].includes(ext)) return 'document';
+  return 'file';
+}
+
+/* ── Safe broadcast — individual try-catch per target ──────── */
+function broadcast(channel, data) {
+  try {
+    if (winRef && !winRef.isDestroyed() && winRef.webContents && !winRef.webContents.isDestroyed()) {
+      try { winRef.webContents.send(channel, data); } catch {}
+    }
+  } catch {}
+  try {
+    const tabs = require('./tabs');
+    const menuView = tabs.getMenuView();
+    if (menuView && menuView.webContents && !menuView.webContents.isDestroyed()) {
+      try { menuView.webContents.send(channel, data); } catch {}
+    }
+  } catch {}
+}
+
+/* ── Persistent config save ─────────────────────────────────── */
+function persistToConfig() {
+  try {
+    config.update((d) => {
+      d.downloads = items.slice(0, 100).map((i) => ({
+        id: i.id, url: i.url, filename: i.filename,
+        totalBytes: i.totalBytes, state: i.state,
+        savePath: i.savePath, startedAt: i.startedAt,
+      }));
+    });
+  } catch (e) {
+    try { logger.error('downloads', 'Config save failed', { error: e.message }); } catch {}
   }
 }
 
+/* ── Init: register will-download on the session ──────────── */
 function init() {
   const { session } = require('electron');
   const ses = session.defaultSession;
 
   ses.on('will-download', (event, webContents, item) => {
-    // EVERYTHING inside one try — nothing must escape to trigger app.quit()
     try {
-      // Safely get filename with fallback
+      // Step 1: Determine filename
       let rawName = '';
       try { rawName = item.getFilename(); } catch {}
       const filename = sanitizeFilename(rawName) || ('download-' + Date.now());
 
       let rawUrl = '';
       try { rawUrl = webContents.getURL(); } catch {}
+      try { logger.info('downloads', 'will-download: ' + filename); } catch {}
 
-      logger.info('downloads', 'will-download: ' + filename + ' from ' + rawUrl);
-
-      // Ensure Downloads directory exists
+      // Step 2: Ensure Downloads directory exists
       const dir = getDownloadDir();
 
-      // Build safe save path
+      // Step 3: Build safe save path and set it on the DownloadItem
       const savePath = uniquePath(path.join(dir, filename));
-      const saveDir = path.dirname(savePath);
-      if (!fs.existsSync(saveDir)) fs.mkdirSync(saveDir, { recursive: true });
+      try {
+        const saveDir = path.dirname(savePath);
+        if (!fs.existsSync(saveDir)) fs.mkdirSync(saveDir, { recursive: true });
+      } catch {}
 
-      // Set save path on the DownloadItem
-      item.savePath = savePath;
+      try { item.savePath = savePath; } catch (e) {
+        try { logger.error('downloads', 'Failed to set savePath', { error: e.message }); } catch {}
+      }
 
-      // Create record IMMEDIATELY so the panel shows it
+      // Step 4: Create record IMMEDIATELY so the panel shows it
       const record = addItem(item);
-      updateItem(record.id, { savePath: savePath });
+      try { updateItem(record.id, { savePath: savePath }); } catch {}
       try {
         const totalBytes = item.getTotalBytes ? item.getTotalBytes() : 0;
         updateItem(record.id, { totalBytes: typeof totalBytes === 'number' ? totalBytes : 0 });
       } catch {}
-      broadcast('downloads:changed', getAll());
+      try { updateItem(record.id, { type: classifyType(record.mimeType, record.filename) }); } catch {}
 
-      // Progress updates
+      // Broadcast initial state
+      try { broadcast('downloads:changed', getAll()); } catch {}
+
+      // Step 5: Progress updates
       try {
         item.on('updated', (e, state) => {
           try {
@@ -158,16 +183,16 @@ function init() {
                 totalBytes: typeof total === 'number' ? total : 0,
                 state: 'progressing',
               });
-              broadcast('downloads:changed', getAll());
+              try { broadcast('downloads:changed', getAll()); } catch {}
             } else if (state === 'interrupted') {
               updateItem(record.id, { state: 'failed' });
-              broadcast('downloads:changed', getAll());
+              try { broadcast('downloads:changed', getAll()); } catch {}
             }
           } catch {}
         });
       } catch {}
 
-      // Completion
+      // Step 6: Completion
       try {
         item.once('done', (e, state) => {
           try {
@@ -184,14 +209,8 @@ function init() {
             } else {
               updateItem(record.id, { state: 'failed' });
             }
-            broadcast('downloads:changed', getAll());
-            config.update((d) => {
-              d.downloads = items.slice(0, 100).map((i) => ({
-                id: i.id, url: i.url, filename: i.filename,
-                totalBytes: i.totalBytes, state: i.state,
-                savePath: i.savePath, startedAt: i.startedAt,
-              }));
-            });
+            try { broadcast('downloads:changed', getAll()); } catch {}
+            persistToConfig();
           } catch {}
         });
       } catch {}
@@ -199,25 +218,12 @@ function init() {
     } catch (e) {
       // Last resort — cancel the download so Electron doesn't hang
       try { item.cancel(); } catch {}
-      try { logger.error('downloads', 'will-download error: ' + (e && e.message)); } catch {}
+      try { logger.error('downloads', 'will-download error', { error: e.message }); } catch {}
       try { console.error('[downloads] will-download error:', e); } catch {}
     }
   });
+
+  logger.info('downloads', 'Download handler registered on defaultSession');
 }
 
-function broadcast(channel, data) {
-  try {
-    if (winRef && !winRef.isDestroyed() && winRef.webContents && !winRef.webContents.isDestroyed()) {
-      winRef.webContents.send(channel, data);
-    }
-  } catch {}
-  try {
-    const tabs = require('./tabs');
-    const menuView = tabs.getMenuView();
-    if (menuView && menuView.webContents && !menuView.webContents.isDestroyed()) {
-      menuView.webContents.send(channel, data);
-    }
-  } catch {}
-}
-
-module.exports = { init, getAll, removeItem, clearAll, openFolder, openFile, setWindow, sanitizeFilename };
+module.exports = { init, getAll, removeItem, clearAll, openFolder, openFile, setWindow, sanitizeFilename, classifyType };
